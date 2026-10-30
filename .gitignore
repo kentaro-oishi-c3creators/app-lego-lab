@@ -1,0 +1,15 @@
+node_modules/
+dist/
+coverage/
+.env
+.env.*
+!.env.example
+*.local
+.DS_Store
+*.log
+*.tsbuildinfo
+# Do not commit sensitive content or development session artifacts
+private/
+secrets/
+artifacts/*.mov
+artifacts/*.mp4

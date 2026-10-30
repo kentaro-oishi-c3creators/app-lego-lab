@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "name": "Two tiny surprises",
+  "nodes": [
+    {
+      "id": "msg-1",
+      "type": "message",
+      "position": {
+        "x": 80,
+        "y": 90
+      },
+      "data": {
+        "label": "Hello!"
+      }
+    },
+    {
+      "id": "char-1",
+      "type": "character",
+      "position": {
+        "x": 410,
+        "y": 90
+      },
+      "data": {
+        "label": "Happy bot"
+      }
+    },
+    {
+      "id": "timer-1",
+      "type": "timer",
+      "position": {
+        "x": 80,
+        "y": 310
+      },
+      "data": {
+        "label": "3 second timer",
+        "durationSeconds": 3
+      }
+    },
+    {
+      "id": "media-1",
+      "type": "media-card",
+      "position": {
+        "x": 410,
+        "y": 310
+      },
+      "data": {
+        "label": "Rainbow preview"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-1",
+      "from": {
+        "nodeId": "msg-1",
+        "portId": "sent"
+      },
+      "to": {
+        "nodeId": "char-1",
+        "portId": "jump"
+      }
+    },
+    {
+      "id": "edge-2",
+      "from": {
+        "nodeId": "timer-1",
+        "portId": "elapsed"
+      },
+      "to": {
+        "nodeId": "media-1",
+        "portId": "play"
+      }
+    }
+  ]
+}
