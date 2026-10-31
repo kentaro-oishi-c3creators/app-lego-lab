@@ -1,36 +1,36 @@
-# Self-improving App LEGO Factory
+# App LEGO Factoryの継続的改善
 
-## Principle
-Treat implementation, verification and process improvement as separate steps. The factory learns by proposing version-controlled changes, **not** by silently rewriting its own safety constraints.
+## 基本原則
+実装・検証・工程改善を別々のステップとして扱う。Factoryは、変更をGitで管理し、改善案をレビューに出すことで学習する。**安全上の制約を黙って書き換えてはならない**。
 
-## Execution loop
-1. Read AGENTS.md, docs/02_TASK_CONTRACT.md and docs/04_JIDOKA_POLICY.md.
-2. Implement the smallest working product behavior on a feature branch.
-3. Run deterministic gates first: typecheck, unit tests, production build, security/secret scan, graph bounds checks.
-4. Run read-only JIDOKA Inspector; produce PASS/BLOCKED plus evidence, exact commands, output summaries and residual risk.
-5. If BLOCKED, stop publishing/merging. Fix product defect on the implementation branch and re-run checks.
-6. Use /learn (when supported) or the improvement template to analyze recurring errors.
-7. Propose a **separate** improvement PR for Skills, agent instructions or check scripts. Include baseline, repro, new regression check and proposed text diffs.
-8. Human reviews/approves workflow/skill changes; never self-approve or weaken a gate to make checks green.
+## 実行サイクル
+1. `AGENTS.md`、`docs/02_TASK_CONTRACT.md`、`docs/04_JIDOKA_POLICY.md`を読む。
+2. 機能ブランチ上で、動作する最小単位から実装する。
+3. 決定的な品質ゲートを先に実行する：型チェック、単体テスト、本番ビルド、セキュリティ・秘密情報の検査、グラフ処理の上限制約。
+4. 読み取り専用のJIDOKA Inspectorで検査し、`PASS` / `BLOCKED`、証跡、実行コマンド、結果要約、残余リスクを記録する。
+5. `BLOCKED` なら公開・マージを停止する。実装ブランチで不具合を修正して再検査する。
+6. 再発する問題を、利用可能なら `/learn`、そうでなければ改善提案テンプレートで分析する。
+7. Skills・エージェント定義・検査スクリプトの改善は、実装とは**別のPR**で提案する。変更前の状態、再現手順、回帰テスト、差分を含める。
+8. 人間が工程・Skillの変更を確認して承認する。AIが自分で承認したり、テストを通すために品質ゲートを緩めたりしてはならない。
 
-## Safety invariants
-- No force pushes, direct main commits, automatic merges, production deployments, paid API calls or secret upload.
-- No personal/financial/client data in fixtures, logs, screenshots or AI prompts.
-- Workers can propose rule improvements; inspectors must not modify the code they audit.
-- Cannot change docs/04_JIDOKA_POLICY.md, this policy, branch protections or CI security checks without human approval.
-- A model's PASS is advisory; deterministic tests are authoritative for their stated coverage.
-- Unverified browser/UX outcomes remain explicitly unverified.
+## 変更してはならない安全原則
+- force push、`main`への直接コミット、自動マージ、本番デプロイ、有料APIの利用、秘密情報のアップロードは禁止。
+- 個人情報・財務情報・顧客情報を、fixtures、ログ、画面キャプチャ、AIへの指示に含めない。
+- Workerはルールの改善を提案してよいが、Inspectorは検査対象コードを変更してはならない。
+- `docs/04_JIDOKA_POLICY.md`、この文書、ブランチ保護、CIのセキュリティ検査を変更する際は人間の承認が必要。
+- AIモデルの`PASS`は参考情報。決定的テストは、そのテストが検査した範囲について根拠となる。
+- ブラウザ操作やUXの未検証事項は、未検証と明記する。
 
-## Observation and evolution
-Store records in experiments/<YYYYMMDD>-<model>-<run>/:
-- context.md — model, harness, permissions, task, versions, elapsed time;
-- jidoka-report.md — gates, PASS/BLOCKED, log references;
-- failures.md — reproduction and root cause hypotheses;
-- learn-proposal.md — proposed Skill/Rule changes, target tests;
-- human-review.md — acceptance, rejection or deferred judgement.
+## 観察と継続的改善
+記録は`experiments/<YYYYMMDD>-<model>-<run>/`に保存する。
+- `context.md`：モデル、実行環境、権限、タスク、バージョン、所要時間
+- `jidoka-report.md`：品質ゲート、`PASS` / `BLOCKED`、ログ参照
+- `failures.md`：再現手順、原因の仮説
+- `learn-proposal.md`：Skill／Ruleの改善案、追加するテスト
+- `human-review.md`：人間による採用・却下・保留の判断
 
-## Model portability
-The root AGENTS.md and docs/* are canonical across Antigravity, Codex, Claude and Kiro.
-Keep platform-specific adapters minimal; do not duplicate policy text into divergent configuration files.
-Use equivalent roles: coordinator, graph worker, UI worker, read-only inspector.
-Record which tool/harness actually executed each gate.
+## 複数ツールで共通利用する
+`AGENTS.md`と`docs/*`をAntigravity・Codex・Claude・Kiro共通の正本とする。
+ツール固有の設定は薄いアダプターに留め、品質ポリシーを各所に複製して食い違わせない。
+役割はCoordinator（統括）、Graph Worker、UI Worker、読み取り専用Inspectorに対応させる。
+各品質ゲートを実際に実行したツール・環境を記録する。
