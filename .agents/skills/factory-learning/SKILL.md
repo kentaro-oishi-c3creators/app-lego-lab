@@ -1,22 +1,22 @@
 ---
 name: factory-learning
-description: Analyze repeated implementation failures and propose auditable improvements to App LEGO Skills, agents, and tests. Never auto-approve or weaken quality gates.
+description: App LEGO開発時の再発する失敗を分析し、Skills・エージェント・テストの改善案を証拠付きで提案する。自動承認や品質ゲートの緩和は禁止。
 ---
-# Factory Learning / POKA-YOKE
+# Factory Learning / POKA-YOKE（再発防止）
 
-Trigger after an actual JIDOKA failure or an explicit human request to improve the factory.
+実際にJIDOKAで失敗を検出した場合、または人間から工程改善を明示的に依頼された場合に使用する。
 
-1. Read docs/08_SELF_IMPROVING_FACTORY.md and docs/04_JIDOKA_POLICY.md.
-2. Collect factual evidence: failing command, logs, reproduction, impacted component and prior failure history.
-3. Classify: product code bug, test weakness, instruction ambiguity, tool/harness failure or environmental problem.
-4. Produce experiments/<run>/learn-proposal.md with:
-   - symptom and reproducible evidence;
-   - likely cause and uncertainties;
-   - proposed change to a Skill or agent definition;
-   - regression test / measurable acceptance criterion;
-   - risk that the proposal hides failures;
-   - rollback plan.
-5. Keep learning changes on a separate branch and PR from application changes.
-6. Request human review before merging; never bypass tests or silently edit safeguards.
+1. `docs/08_SELF_IMPROVING_FACTORY.md`と`docs/04_JIDOKA_POLICY.md`を読む。
+2. 失敗したコマンド、ログ、再現手順、影響箇所、過去の失敗履歴など、事実に基づく証拠を集める。
+3. 問題を分類する：アプリの不具合、テスト不足、指示の曖昧さ、ツール・実行基盤の問題、環境要因。
+4. `experiments/<run>/learn-proposal.md`を作成し、以下を記録する。
+   - 症状と再現可能な証拠
+   - 推定原因と不確実な点
+   - Skillまたはエージェント定義への変更案
+   - 回帰テストと測定可能な受け入れ基準
+   - 変更によって不具合を隠してしまうリスク
+   - ロールバック手順
+5. 工程改善はアプリの実装変更と別のブランチ・PRで扱う。
+6. マージ前に人間のレビューを求める。検査を回避したり、安全制約を黙って変更したりしない。
 
-Successful completion means an evidence-based proposal is ready for review, **not** that the factory has autonomously improved.
+完了条件は、**証拠のある改善案を人間のレビューに提出できること**。AIが自律的にFactoryを改善し終えたことを意味しない。
