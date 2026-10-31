@@ -1,63 +1,63 @@
-# PoC 0 — Product specification
+# PoC 0 — プロダクト仕様書 (Product Specification)
 
-## Hypothesis
+## 仮説 (Hypothesis)
 
-A toy where software modules can be arranged, connected, disconnected and combined will inspire curiosity **before** users are told to build a useful app. This tests the *composition experience*, not the intelligence of AI code generation or commercial potential.
+「実用的なアプリを作ろう」と言われる**前に**、ソフトウェアのモジュール（ブロック）を並べ、つなぎ、外し、組み合わせて遊べるおもちゃがあれば、ユーザーの好奇心を刺激できるのではないか。本PoCはAIコード生成の賢さや商業的ポテンシャルではなく、**モジュールを組み合わせる体験（Composition Experience）そのものの面白さ**を検証する。
 
-## Target demonstration (adult tester; no personal data)
+## 対象デモンストレーション（成人テスター向け・個人情報なし）
 
-- Launch browser. Visually see an inviting toybox and canvas with a clear sample.
-- Pick among **Message**, **Character**, **Timer**, **Media Card**. Add them onto a canvas, drag/move, inspect typed ports.
-- Wire an output to a compatible input. Valid connection visibly animates or changes content in a deterministic way.
-- Press Send on Message block -> connected Character jumps (a short CSS animation).
-- Start Timer (3 seconds, reduced to <=3 seconds for demo) -> connected Media Card toggles a mock play state or animates a progress card; **no real media streams**.
-- Break a line -> source action no longer updates target.
-- Undo -> connection returns, event routing resumes.
-- Invalid connection (output→output, unsupported event type, self-loop, or cycle) shows a friendly warning; no edge is added.
-- Reset demo returns a reproducible baseline graph; user can freely play again.
+- ブラウザを起動すると、魅力的なトイボックス（パレット）と、わかりやすいサンプルが配置されたキャンバスが表示される。
+- **Message**、**Character**、**Timer**、**Media Card** の4種類からブロックを選び、キャンバスに追加・ドラッグ移動し、型付きポートを確認できる。
+- 出力ポート（Output）を互換性のある入力ポート（Input）へ接続すると、決定論的にアニメーションや状態変化が起きる。
+- **Message** ブロックの Send ボタンを押す -> 接続された **Character** がジャンプする（短いCSSアニメーション）。
+- **Timer** を開始する（デモ用に3秒以下） -> カウントダウン完了時に接続された **Media Card** のモック再生状態が切り替わる（またはプログレスが動く。**実際の動画・音声ストリームは扱わない**）。
+- 接続線を切る（Disconnect） -> 送信元の操作を行っても接続先は反応しなくなる。
+- **Undo**（元に戻す） -> 切断された接続が戻り、イベント伝播が再開する。
+- 不正な接続（出力→出力、未対応のイベント型、自己ループ、閉路/サイクル）を試みると、わかりやすい警告メッセージが表示され、エッジは追加されない（グラフは変化しない）。
+- **Reset demo** を押すと、再現可能な初期サンプルグラフに戻り、何度でも自由に遊び直せる。
 
-## Block contracts (initial)
+## ブロック契約（初期仕様 / Block contracts）
 
-| Block | Output ports | Input ports | Runtime action |
+| ブロック (`BlockType`) | 出力ポート (Output ports) | 入力ポート (Input ports) | 実行時の動作 (Runtime action) |
 |---|---|---|---|
-| Message | `sent`: `trigger` | none | user clicks send to emit `trigger` |
-| Character | optional `jumped`: `notification` (defer unless needed) | `jump`: `trigger` | display a brief jump animation |
-| Timer | `elapsed`: `trigger` | none | emit `trigger` when configured countdown ends |
-| Media Card | none | `play`: `trigger` | toggle visually mocked play state |
+| Message (`message`) | `sent`: `trigger` | なし | ユーザーが Send を押すと `trigger` を発火 |
+| Character (`character`) | 任意 `jumped`: `notification`（必要になるまで保留・予約） | `jump`: `trigger` | 短いジャンプアニメーションを表示 |
+| Timer (`timer`) | `elapsed`: `trigger` | なし | 設定されたカウントダウン終了時に `trigger` を発火 |
+| Media Card (`media-card`) | なし | `play`: `trigger` | 視覚的なモック再生状態をトグル |
 
-**Keep actual PoC ports minimal:** `Message.sent -> Character.jump`, `Timer.elapsed -> MediaCard.play`. Do not add cross-type connections just to make every combination possible. Future directions can be shown as disabled ideas, not half-built features.
+**PoCのポートは最小限に保つこと：** 基本は `Message.sent -> Character.jump`、`Timer.elapsed -> MediaCard.play`。あらゆる組み合わせを可能にするためだけに異種ポートをむやみに増やさないこと。将来の拡張アイデアは中途半端な実装ではなく、無効化（予約済み）されたアイデアとして示すこと。
 
-## UX details
+## UX詳細 (UX details)
 
-- Desktop browser first; responsive single-column fallback for small widths.
-- 4 blocks distinguishable by icon, title, outline/color and accessible labels; do not depend solely on color.
-- 1–2 click discoverability: preloaded examples plus an empty canvas button.
-- Visible event log (“Message.sent -> Character.jump”) to make mechanics understandable.
-- Brief animation with reduced-motion handling.
-- Undo should cover add/delete/move/connect/disconnect and restore a prior deterministic graph snapshot. If move-history is expensive, document this as a deliberate limitation and prioritize connect/disconnect.
-- If no valid drop/connect occurs, show a small nonintrusive hint, not a blocking tutorial.
+- デスクトップブラウザ優先。狭い画面幅では1カラム等にフォールバックするレスポンシブ設計。
+- 4種類のブロックはアイコン、タイトル、枠線・色、アクセシブルなラベルで識別可能にし、色だけに依存しないこと。
+- 1〜2クリックで試せる発見しやすさ：初期ロード済みのサンプルに加え、「空のキャンバス（Empty Canvas）」ボタンを用意する。
+- 仕組みが直感的にわかるよう、可視化されたイベントログ（例：`Message.sent -> Character.jump`）を表示する。
+- 短いアニメーションには `prefers-reduced-motion`（視差・動きの軽減）への配慮を入れる。
+- Undo は追加・削除・移動・接続・切断を対象とし、以前の決定論的なグラフスナップショットを復元する（移動履歴のコストが高い場合は意図的な制限として文書化し、接続・切断のUndoを最優先とする）。
+- 有効な配置・接続がまだ行われていない場合は、操作を妨げるチュートリアルではなく、控えめなヒントを表示する。
 
-## Acceptance scenarios
+## 受け入れシナリオ (Acceptance scenarios)
 
-1. Fresh launch: sample graph loads with a Message→Character and Timer→Media pair.
-2. Send while connected: character visibly jumps once and log records one dispatch.
-3. Remove edge: Send does not change character; event log can record an unhandled event but no target dispatch.
-4. Undo disconnection: Send again triggers character.
-5. Attempt illegal self-edge / incompatible port: graph remains structurally unchanged, warning appears.
-6. Start Timer: one elapsed event after countdown, no duplicate on re-render; cancel when timer block is deleted.
-7. Reset restores initial scene; no personal content or network requests.
-8. Keyboard focus accessible for basic buttons; page at common laptop width has no clipped primary controls.
+1. **初回起動 (Fresh launch)**：`Message → Character` と `Timer → Media` のペアを含むサンプルグラフが読み込まれる。
+2. **接続中の送信 (Send while connected)**：Send を押すと Character が1回ジャンプし、イベントログに1件のディスパッチが記録される。
+3. **接続の削除 (Remove edge)**：接続を外して Send を押しても Character は変化しない（イベントログに未処理イベントとして記録されるのは可だが、ターゲットへの配送は起きない）。
+4. **切断のUndo (Undo disconnection)**：Undo 後に再度 Send を押すと、再び Character がジャンプする。
+5. **不正接続の試行 (Attempt illegal self-edge / incompatible port)**：グラフ構造は一切変化せず、警告が表示される。
+6. **タイマー開始 (Start Timer)**：カウントダウン後に `elapsed` イベントが1回だけ発火し、再レンダーで重複発火しない。タイマーブロック削除時にはタイマーがキャンセルされる。
+7. **リセット (Reset)**：初期シーンが復元され、個人情報や外部ネットワーク通信を一切含まない。
+8. **アクセシビリティとレイアウト (Accessibility & Layout)**：基本ボタンにキーボードフォーカスが当たり、一般的なノートPC画面幅で主要な操作コントロールが見切れない。
 
-## Out of scope
+## スコープ外 (Out of scope)
 
-AI generation at runtime, persistent accounts, cloud save, publishing, public collaboration, real messages/video, external services, billing, custom scripting, moderation, mobile native apps. Child use is **not** production-supported; current PoC is an adult-supervised prototype.
+実行時のAI生成、永続アカウント、クラウド保存、公開・パブリッシュ、共同編集、実際のメッセージ送受信や動画配信、外部サービス連携、課金、カスタムスクリプト、モデレーション、モバイルネイティブアプリ。子ども向けの本番利用はサポート対象外（本PoCは大人の監督下で扱うプロトタイプ）。
 
-## Human research questions
+## 人間による観察・検証項目 (Human research questions)
 
-- How many seconds until first spontaneous action?
-- Can the tester make the character react without instruction?
-- After breaking a line, do they reconnect or try a new combination?
-- Is the toy interesting enough to show somebody else?
-- What surprise occurred that the designer did not plan?
+- 最初の自発的な操作までに何秒かかったか？
+- 説明なしでキャラクターを反応させることができたか？
+- 接続を切ったあと、再接続したか、それとも別の組み合わせを試したか？
+- 他の人に見せたくなるくらい面白いと感じたか？
+- 設計者が意図していなかったどんな驚きや発見が起きたか？
 
-Do not conflate aesthetic polish, impressive AI coding, and intrinsic fun of module composition.
+見た目の美しさやAIコーディングの凄さと、「モジュールを組み合わせること自体の本質的な楽しさ」を混同しないこと。

@@ -1,42 +1,41 @@
-# Hackathon runbook — 2026-10-31 JST
+# ハッカソン実行ランブック (Hackathon Runbook) — 2026-10-31 JST
 
-The event's morning lecture is planned before the afternoon build. Live schedule may change. The times below are a suggested personal timebox, not the organizer's official program.
+午前の講義セッションの後に午後のビルド時間が予定されている。以下の時間配分は個人の目安となるタイムボックスであり、主催者の公式プログラムではない。
 
-| Slot | Main outcome | Stop/Go |
+| スロット | 主な到達目標 | Stop/Go 基準 |
 |---|---|---|
-| Before build (15 min) | Clone repo, read Task Contract, start Antigravity, decide implementation mode | No secrets, no unapproved commands |
-| Phase A (45–60 min) | Minimal Vite app + graph core + first Message→Character reaction | Must be genuinely interactive |
-| Phase B (45–60 min) | Canvas wiring/disconnect + Undo, graph tests | Invalid connections rejected |
-| Phase C (30–45 min) | Timer→Media mock, nice interactions, inspect accessibility | Stop adding scope |
-| Phase D (30–45 min) | JIDOKA Inspector: typecheck/test/build/browser, fix or BLOCK | Evidence + report |
-| Final (20–30 min) | 60–90 sec demo, README, screenshot, run record | Human observation + next step |
+| 開始前 (15分) | リポジトリ取得、Task Contract確認、Antigravity起動、実装方針決定 | 秘密情報なし、未承認コマンドなし |
+| Phase A (45–60分) | 最小Viteアプリ + グラフコア + 最初の `Message → Character` 反応 | 実際にインタラクティブに動くこと |
+| Phase B (45–60分) | キャンバス結線・切断 + Undo、グラフ単体テスト | 不正な接続が確実に拒否されること |
+| Phase C (30–45分) | `Timer → Media` モック、心地よい操作感、アクセシビリティ確認 | スコープの追加を止める |
+| Phase D (30–45分) | JIDOKA Inspector：型チェック・テスト・ビルド・ブラウザ確認、修正またはBLOCK | 証跡とレポートの記録 |
+| 最終 (20–30分) | 60〜90秒デモ手順、README、スクリーンショット、実行記録 | 人間による観察と次の実験提案 |
 
-## Demo storyboard
+## デモ・ストーリーボード (Demo storyboard)
 
-1. Show toybox, drag Message and Character to canvas.
-2. Connect `sent → jump`; send message; character jumps.
-3. Disconnect; send; no jump. Undo; send; jump returns.
-4. Add Timer & Media Card, connect them; timer fires; fake media reaction.
-5. Try an invalid connection; app refuses gracefully.
-6. End with a question: “Is connecting these parts enjoyable, even without AI magic?”
+1. トイボックス（パレット）を見せ、Message と Character をキャンバスに配置する。
+2. `sent → jump` を接続し、メッセージを Send すると Character がジャンプする。
+3. 接続を切り、Send するとジャンプしない。Undo を押して Send すると再びジャンプする。
+4. Timer と Media Card を追加・接続し、タイマー完了でメディアカードが反応することを見せる。
+5. 不正な接続を試み、アプリが安全に拒否して警告を出すことを見せる。
+6. 最後に問いかける：「AIの魔法がなくても、こうしてパーツをつないで動かすこと自体に楽しさはあるか？」
 
-## Observation form
+## 観察フォーム (Observation form)
 
-- Start time, device/browser, experiment ID
-- Seconds to first voluntary interaction
-- Number of distinct connection ideas attempted
-- Number of recovery/retry actions after failure
-- Did participant ask to continue or remix?
-- Most surprising behavior / confusion
-- What to remove next time?
-- Verdict: interesting / uncertain / not interesting (avoid forced positivity)
+- 開始時刻、デバイス／ブラウザ、実験ID
+- 最初の自発的な操作までの秒数
+- 試みた接続アイデアの種類数
+- 失敗や切断後のリカバリ・再試行回数
+- 参加者が「もっと続けたい」「組み替えてみたい」と言ったか？
+- 最も意外だった挙動／戸惑った点
+- 次回削るべき要素は何か？
+- 判定：面白い (interesting) / どちらとも言えない (uncertain) / 面白くない (not interesting)（※無理に肯定的な結論にしないこと）
 
-## If time is running out
+## 時間が足りなくなった場合 (If time is running out)
 
-Ship only Message→Character + disconnect + undo + tests. It is better to demonstrate **one real composition** than show four beautiful inert cards.
+`Message → Character` + 切断 + Undo + テストのみを出荷する。動かない綺麗な4枚のカードを見せるより、**本当に動く1つの組み合わせ**を実証する方が価値がある。
 
-## Event day rules
+## イベント当日のルール (Event day rules)
 
-- Use online attendance as planned. Do not assume remote hackers can present to the main event audience; check the live instructions.
-- If screen sharing, confirm no private browser tabs, Drive docs or tokens are visible.
-- Do not push private business files or personal observations to a public repo.
+- 画面共有を行う場合は、プライベートなブラウザタブ、Drive文書、トークン等が映り込んでいないか確認する。
+- 非公開の業務ファイルや個人の自己分析データを公開リポジトリにプッシュしない。

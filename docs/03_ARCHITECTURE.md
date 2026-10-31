@@ -1,57 +1,58 @@
-# Technical architecture — tiny typed event-graph toy
+# 技術アーキテクチャ — 小さな型付きイベントグラフ・トイ (Technical Architecture)
 
-## Layers
+## レイヤー構成 (Layers)
 
 ```text
-Browser Canvas (React + React Flow or equivalent)
+Browser Canvas (React + SVG/Canvas UI)
   ├─ Palette / Nodes / Edges / Undo UI
   ├─ Runtime block views / animations
   └─ Event Log / Feedback
                   ↓ actions
 Graph state + history (typed JSON, pure updates)
   ├─ `validateConnection(graph, proposedEdge)` (pure)
-  └─ `dispatchEvent(graph, sourcePort, payload, limits)` (bounded and pure plan)
+  └─ `dispatchEvent(graph, sourceNodeId, sourcePortId, limits)` (bounded and pure plan)
                   ↓ effects
 UI event dispatcher / state machine
   └─ Presentation state: jump/play/progress; no arbitrary code execution
 ```
 
-## Data contracts
+## データ契約 (Data contracts)
 
-- `BlockType`: `message` | `character` | `timer` | `media-card`.
-- `BlockNode`: `{ id, type, position: {x,y}, data: {label?, durationSeconds?} }` with a *whitelisted* field set.
-- `BlockEdge`: `{ id, from: {nodeId,portId}, to: {nodeId,portId} }`.
-- `PortType`: `trigger` in PoC 0; `notification` is reserved only as future design and should not be implemented now.
-- A connection exists only from output port to input port; both nodes must exist and port signatures must match. Disallow direct self-loop, duplicate edge and graph cycle.
-- `GraphState` is the single source of truth for layout and edges; UI transient animation state stays separate.
-- Every valid event is `{eventId,sourceNodeId,sourcePortId,type,createdAt,traceId}`. IDs generated locally.
+- `BlockType`: `'message' | 'character' | 'timer' | 'media-card'`
+- `BlockNode`: `{ id, type, position: {x,y}, data: {label?, durationSeconds?} }`（ホワイトリスト化されたフィールドのみ許容）
+- `BlockEdge`: `{ id, from: {nodeId,portId}, to: {nodeId,portId} }`
+- `PortType`: PoC 0 で有効なのは `'trigger'` のみ。`'notification'` は将来設計の予約としてのみ扱い、PoC 0 では有効接続として実装しない（未対応型エラーの検証に使用）。
+- 接続は出力ポート（output）から入力ポート（input）へのみ成立する。両端のノードが存在し、ポートの型シグネチャが一致しなければならない。直接の自己ループ（self-loop）、重複エッジ（duplicate edge）、およびグラフの閉路（cycle）を禁止する。
+- `GraphState` がレイアウトとエッジの単一の正本（Single Source of Truth）であり、UIの一時的なアニメーション状態は分離して保持する。
+- すべての有効なイベントは `{eventId, sourceNodeId, sourcePortId, type, createdAt, traceId}` を持ち、IDはローカルで生成する。
 
-## Deterministic runtime
+## 決定論的ランタイム (Deterministic runtime)
 
-1. User clicks Send (or timer fires).
-2. Dispatcher creates a `trigger` event at the source output.
-3. Lookup directed graph edges; deliver only to compatible input ports.
-4. Invoke a predefined `onEvent` handler for each destination block type.
-5. Record dispatched target(s) for UI and event log.
-6. Enforce dispatch `maxHops=8`, `maxDeliveries=32` per origin event, and visited edge/event dedup as defense in depth.
+1. ユーザーが Send をクリックする（または Timer がカウントダウンを完了する）。
+2. ディスパッチャが送信元の出力ポートで `trigger` イベントを生成する。
+3. 有向グラフのエッジを探索し、互換性のある入力ポートにのみイベントを配送する。
+4. 到達先の各ブロック種別に対して事前定義された `onEvent` ハンドラ（ジャンプ、再生切替など）を呼び出す。
+5. UI表示およびイベントログ用に配送先を記録する。
+6. 多重防御（Defense in depth）として、1回の起点イベントあたり `maxHops=8`、`maxDeliveries=32`、および訪問済みエッジ／イベントの重複排除（dedup）を強制する。
 
-Why both cycle rejection and dispatch bound? An invalid graph may arrive through corrupted fixture/load or future feature. The runtime must **also** fail safe. Never allow arbitrary node code or user-provided event handlers.
+**なぜ閉路拒否と配送上限の両方が必要か？**
+破損したフィクスチャの読み込みや将来の機能追加によって不正なグラフが渡される可能性があるため、ランタイム側でもフェイルセーフに停止しなければならない。任意のノードコードやユーザー定義のイベントハンドラは絶対に実行しない。
 
-## Undo design
+## Undo設計 (Undo design)
 
-Use snapshot stack or patches for graph-changing actions. Basic cap e.g. last 30 graph states. Edges added/removed, blocks created/deleted, movement (if manageable). Avoid storing transient animation state in history.
+グラフを変更する操作に対してスナップショットスタック（最大30件など）を使用する。対象はエッジの追加・削除、ブロックの追加・削除、および移動。一時的なアニメーション状態は履歴に保存しない。
 
-## Component boundary
+## コンポーネントの責務境界 (Component boundary)
 
-| Component | Responsibility | Should not do |
+| コンポーネント | 責務 (Responsibility) | 行ってはならないこと (Should not do) |
 |---|---|---|
-| GraphEngine | validate edges, modify graph state, bound route | DOM, useEffect, timers, network |
-| BlockKit | render four toy modules; typed ports | mutate global graph directly |
-| Canvas | drag, connect, select, remove | infer event semantics from UI labels |
-| RuntimeDriver | timer cancellation, trigger effects, log | execute arbitrary strings as code |
-| Inspector | tests, reports, STOP/GO | silently patch without approval |
+| GraphEngine | エッジ検証、グラフ状態の純粋更新、上限付きルーティング | DOM操作、`useEffect`、タイマー、ネットワーク通信 |
+| BlockKit | 4種のトイブロック描画、型付きポート表示 | グローバルなグラフ状態の直接ミューテーション |
+| Canvas | ドラッグ配置、接続、選択、切断 | UIラベル文字列からイベントの意味を推論すること |
+| RuntimeDriver | タイマーのキャンセル管理、エフェクト発火、イベントログ記録 | 任意の文字列をコードとして実行すること |
+| Inspector | テスト確認、レポート作成、STOP/GO判定 | 承認なしに本番コードを黙って書き換えること |
 
-## Minimal project target
+## 最小プロジェクト構成 (Minimal project target)
 
 ```text
 src/
@@ -59,20 +60,21 @@ src/
   domain/types.ts
   domain/graph.ts
   domain/runtime.ts
+  domain/sampleGraph.ts
   components/Canvas.tsx
-  components/blocks/{Message,Character,Timer,MediaCard}.tsx
+  components/blocks/{MessageBlock,CharacterBlock,TimerBlock,MediaCardBlock}.tsx
   state/history.ts
   styles.css
-tests/{graph,dispatch,undo}.test.ts
+tests/{graph,dispatch,undo,ui-integration}.test.ts(x)
 ```
 
-File names are examples, not hard requirements. Prefer correct boundaries over perfect architecture.
+ファイル名は例示であり、完璧な階層よりも責務境界の正しさを優先する。
 
-## Development sequence
+## 開発順序 (Development sequence)
 
-1. `Message.sent -> Character.jump` with click behavior and tests.
-2. Disconnect/reconnect + Undo; verify.
-3. Timer + Media Card mock behavior; verify timer cleanup.
-4. Canvas palette and polish only after working interactions.
+1. `Message.sent -> Character.jump` のクリック動作と単体テスト。
+2. 切断・再接続 + Undo の実装と検証。
+3. `Timer + Media Card` のモック動作と、タイマークリーンアップの検証。
+4. 動作が成立した後にキャンバスのパレットや見た目を整える。
 
-Do not build a real video player. CSS mock visual is enough to test the idea.
+本物の動画プレイヤーは作らない。アイデアの検証にはCSSによるモック表現で十分である。

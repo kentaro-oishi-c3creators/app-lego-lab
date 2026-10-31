@@ -1,0 +1,155 @@
+{
+  "timestamp": "2026-10-31T05:07:48.753Z",
+  "consoleErrors": [],
+  "pageExceptions": [],
+  "layoutCheck": {
+    "viewport": {
+      "width": 1280,
+      "height": 860
+    },
+    "allVisibleAndUnclipped": true,
+    "controls": [
+      {
+        "id": "undo-btn",
+        "left": 658,
+        "top": 15,
+        "right": 829,
+        "bottom": 51,
+        "width": 171,
+        "height": 36,
+        "clipped": false
+      },
+      {
+        "id": "empty-canvas-btn",
+        "left": 837,
+        "top": 15,
+        "right": 1046,
+        "bottom": 51,
+        "width": 210,
+        "height": 36,
+        "clipped": false
+      },
+      {
+        "id": "reset-demo-btn",
+        "left": 1054,
+        "top": 15,
+        "right": 1262,
+        "bottom": 51,
+        "width": 208,
+        "height": 36,
+        "clipped": false
+      },
+      {
+        "id": "add-message-btn",
+        "left": 14,
+        "top": 166,
+        "right": 274,
+        "bottom": 222,
+        "width": 260,
+        "height": 56,
+        "clipped": false
+      },
+      {
+        "id": "add-character-btn",
+        "left": 14,
+        "top": 230,
+        "right": 274,
+        "bottom": 286,
+        "width": 260,
+        "height": 56,
+        "clipped": false
+      },
+      {
+        "id": "add-timer-btn",
+        "left": 14,
+        "top": 294,
+        "right": 274,
+        "bottom": 350,
+        "width": 260,
+        "height": 56,
+        "clipped": false
+      },
+      {
+        "id": "add-media-btn",
+        "left": 14,
+        "top": 358,
+        "right": 274,
+        "bottom": 414,
+        "width": 260,
+        "height": 56,
+        "clipped": false
+      },
+      {
+        "id": "send-btn-msg-1",
+        "left": 383,
+        "top": 301,
+        "right": 605,
+        "bottom": 337,
+        "width": 222,
+        "height": 36,
+        "clipped": false
+      },
+      {
+        "id": "start-timer-btn-timer-1",
+        "left": 383,
+        "top": 522,
+        "right": 605,
+        "bottom": 556,
+        "width": 222,
+        "height": 34,
+        "clipped": false
+      },
+      {
+        "id": "block-node-msg-1",
+        "left": 370,
+        "top": 157,
+        "right": 618,
+        "bottom": 348,
+        "width": 248,
+        "height": 191,
+        "clipped": false
+      },
+      {
+        "id": "block-node-char-1",
+        "left": 700,
+        "top": 157,
+        "right": 948,
+        "bottom": 367,
+        "width": 248,
+        "height": 210,
+        "clipped": false
+      },
+      {
+        "id": "block-node-timer-1",
+        "left": 370,
+        "top": 377,
+        "right": 618,
+        "bottom": 567,
+        "width": 248,
+        "height": 190,
+        "clipped": false
+      },
+      {
+        "id": "block-node-media-1",
+        "left": 700,
+        "top": 377,
+        "right": 948,
+        "bottom": 600,
+        "width": 248,
+        "height": 223,
+        "clipped": false
+      }
+    ]
+  },
+  "jumpResult": {
+    "jumping": "true",
+    "jumpCount": "1"
+  },
+  "disconnectUndoResult": {
+    "countAfterDisconnectedSend": "1",
+    "countAfterUndoAndSend": "2"
+  },
+  "invalidConnResult": {
+    "warningText": "⚠️ [SELF_LOOP] 同じブロック自身には接続できません (Self-loop is not allowed).閉じる"
+  }
+}
