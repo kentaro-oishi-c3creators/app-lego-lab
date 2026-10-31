@@ -16,3 +16,10 @@ Use this skill when the task asks to implement a block/module, event graph, conn
 7. Update `experiments/` with what was actually observed. Never claim human delight from automated checks.
 
 Possible subtask sequence: Graph Engine → UI Blocks → integration → JIDOKA → human observation. Use separate worktrees when safely supported; do not assume subagent concurrency.
+
+## POKA-YOKE Guardrails (Learned from 20261031-antigravity-poc0)
+
+- **React 18 Automatic Batching & Log Keys**: Capture any sequential entry ID (`const entryId = ...`) *outside* `setState((prev) => ...)` updater callbacks so rapid or batched actions in `React.StrictMode` never produce duplicate React list keys.
+- **Synchronous Multi-Click State Consistency**: Mirror interactive selection state (`pendingPort`) and graph history (`history`) in a synchronous `useRef` alongside `useState`, and include an integration test that invokes multiple native `.click()` calls inside a single `act()` block while asserting `console.error` is not called.
+- **Subagent Write Tool Availability**: If workspace custom subagents (`graph-engine-worker`, `ui-play-worker`) launch in a read-only sandbox without `write_file`, execute their roles sequentially from the Coordinator rather than bypassing sandbox boundaries, and use the read-only `jidoka-inspector` subagent for independent gate auditing.
+- **UTF-8 Artifact Logs on Windows**: When saving test/build stdout on Windows PowerShell, write explicitly with UTF-8 encoding (`[System.IO.File]::WriteAllText(..., [System.Text.UTF8Encoding]::new($false))`) rather than default UTF-16LE redirection so cross-agent reviewers can inspect logs directly.
