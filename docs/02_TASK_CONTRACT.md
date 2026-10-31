@@ -1,45 +1,45 @@
-# Task Contract — App LEGO PoC 0
+# タスク契約書 (Task Contract) — App LEGO PoC 0
 
-**Date:** 2026-10-31 JST. **Max build window:** approx. 4 hours after morning session (may be shorter). **Owner:** human participant.
+**日付:** 2026-10-31 JST. **最大作業時間枠:** 午前のセッション後 約4時間（短縮の可能性あり）. **オーナー:** 人間の参加者.
 
-## Goal
+## 目標 (Goal)
 
-Implement a local interactive software-block puzzle in which placing, connecting, disconnecting and undoing connections *changes behavior*, enabling one honest human observation of whether this is enjoyable.
+ブロックを配置し、接続し、切断し、Undo（元に戻す）することで**振る舞いが実際に変化する**ローカル実行型のインタラクティブなソフトウェアブロック・パズルを実装し、「この体験が本当に楽しいか」を人間が誠実に観察できるようにする。
 
-## Non-goals
+## 非目標 (Non-goals)
 
-- Do not build a full app generator, chat service, video platform or social network.
-- Do not use the user's self-analysis corpus or any personally identifiable / client / financial / private Drive content.
-- Do not implement LLM use at runtime or an agent framework inside the user-facing demo.
-- Do not deploy or publish automatically; do not request paid APIs.
-- Do not add more than four block types, marketplace, auth, accounts, multiuser, payments, cloud DB, real uploads.
+- フル機能のアプリ生成ツール、チャットサービス、動画プラットフォーム、SNSを作らない。
+- ユーザーの自己分析コーパスや、個人情報・顧客情報・財務情報・非公開Driveコンテンツを一切使用しない。
+- 実行時のLLM呼び出しや、ユーザー向けデモ内部でのエージェントフレームワークを組み込まない。
+- 自動的なデプロイや公開を行わない。有料APIを呼び出さない。
+- 4種類を超えるブロック種別、マーケットプレイス、認証、アカウント、マルチユーザー、決済、クラウドDB、実ファイルアップロードを追加しない。
 
-## Constraints
+## 制約事項 (Constraints)
 
-- React + TypeScript + Vite, local-only; TypeScript strict on.
-- Runtime deterministic and offline; use minimal dependencies.
-- Typed ports; validate graph edits before commit and bound event dispatch.
-- Fast first interaction; accessible labels, reduced motion support.
-- Testable pure graph/event utilities; no code execution from block labels/data; no `eval`.
-- Treat `AGENTS.md` and `docs/04_JIDOKA_POLICY.md` as binding rules.
-- No side effects outside repo without approval. If git operations are available, commit only to a feature branch and request review before any main/public push.
+- React + TypeScript + Vite によるローカル完結構成（TypeScript `strict: true` 必須）。
+- ランタイムは決定論的かつオフラインで動作し、依存パッケージは最小限に抑える。
+- 型付きポート（Typed ports）を持ち、グラフ変更をコミットする前に検証し、イベント配送に上限（バウンド）を設ける。
+- 最初の操作までが高速であり、アクセシブルなラベルと `prefers-reduced-motion`（動きの軽減）に対応する。
+- テスト可能な純粋関数としてグラフ検証・イベント配送を実装し、ブロックのラベルやデータからコードを実行しない（`eval` 禁止）。
+- `AGENTS.md` および `docs/04_JIDOKA_POLICY.md` を拘束力のある必須ルールとして扱う。
+- 承認なしにリポジトリ外へ副作用を与えない。Git操作を行う場合は機能ブランチ（`feat/poc0-antigravity` 等）にのみコミットし、`main` へのマージや公開前には人間のレビューを求める。
 
-## Deliverables
+## 成果物 (Deliverables)
 
-1. Working local Web PoC with 4 modules, 2 meaningful behaviors and sample graph.
-2. `npm install`, `npm run dev`, `npm run build`, `npm test` documented and working (adapt scripts to actual stack).
-3. Automated unit tests for valid/invalid connections, undo and bounded routing.
-4. Browser-based evidence or explicit notice if browser verification cannot be run.
-5. README with demo steps and limitations; `artifacts/` demo screenshots/recording (if captured), `experiments/` observation log.
-6. JIDOKA report with either `STATUS: PASS` or `STATUS: BLOCKED` plus failed checks.
+1. 4種類のモジュール、2つの意味のある反応動作、およびサンプルグラフを備えた動作するローカルWeb PoC。
+2. `npm install`、`npm run dev`、`npm run build`、`npm test` が文書化され、実際に動作すること。
+3. 正常接続・不正接続、Undo、および有界イベントルーティング（上限付き配送）の自動単体テスト。
+4. ブラウザベースの動作確認証跡（またはブラウザ検証が実行できない場合の明示的な記載）。
+5. デモ手順と制限事項を記載した `README.md`、`artifacts/` 配下のスクリーンショットや記録、`experiments/` 配下の観察ログ。
+6. `STATUS: PASS` または `STATUS: BLOCKED`（および失敗したゲート）を明記した JIDOKA 検査レポート。
 
-## Done when
+## 完了条件 (Done when)
 
-- Sample demo interactions run reliably with no console errors and no network requirement (besides local dev serving).
-- Typecheck, test and production build pass, with test outputs recorded.
-- Bad edges are rejected, graph remains unchanged, dispatch safety bound is tested.
-- Undo works after at least disconnect and connect.
-- Main agent presents a human-ready demo and records unverified UX observations separately.
-- Timebox ends or human says stop: clearly report incomplete work rather than expanding scope.
+- サンプルデモの操作がコンソールエラーなしで確実に動作し、ローカル開発サーバー以外のネットワーク通信を必要としないこと。
+- 型チェック、テスト、本番ビルドがすべて成功し、テスト出力が記録されていること。
+- 不正なエッジが拒否され、拒否時にグラフが不変であり、ディスパッチの安全上限がテストされていること。
+- 少なくとも切断および接続の後に Undo が正しく動作すること。
+- メインエージェントが人間がすぐに遊べるデモを提示し、未検証のUX観察項目を分けて記録していること。
+- タイムボックス終了または人間からの停止指示があった場合、スコープを広げるのではなく未完了項目を明確に報告すること。
 
-**Stop conditions:** Any secret/personal data at risk, any unauthorized external side-effect, runaway event loop, security issue or tests failing -> `STATUS: BLOCKED`; do not publish.
+**停止条件 (Stop conditions):** 秘密情報・個人情報の漏洩リスク、未承認の外部副作用、暴走するイベントループ、セキュリティ問題、またはブロッキングテストの失敗が1つでもあれば `STATUS: BLOCKED` とし、公開・統合を停止する。

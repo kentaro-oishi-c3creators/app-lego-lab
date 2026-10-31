@@ -1,42 +1,42 @@
-# Cross-model / cross-agent experiment plan
+# モデル・エージェント横断比較実験計画 (Cross-model / Cross-agent Experiment Plan)
 
-## Purpose
+## 目的 (Purpose)
 
-Compare *tool + model + task execution* on the same narrowly scoped PoC, not the intrinsic intelligence of a model. Different agents may have different default tools, prompts, caches, context, timeouts and permissions; claims must be qualified.
+モデルの抽象的な知能ではなく、同じ狭いスコープのPoCに対する**「ツール＋モデル＋タスク実行」の総合的なワークフロー品質**を比較する。エージェントごとに標準ツール、プロンプト、キャッシュ、コンテキスト、タイムアウト、権限が異なるため、比較結果は前提条件を明記して評価する。
 
-## Controlled inputs
+## 統制する入力条件 (Controlled inputs)
 
-- Same baseline commit SHA in the repository, fresh branch/worktree for each run.
-- Same `docs/02_TASK_CONTRACT.md`, requirements, fixtures and primary prompt; record any provider-specific adjustment.
-- Same timebox and test commands on same machine if possible.
-- Same external package policy, network approval rules and budget cap.
-- No prior hidden context from a previous agent run where possible; log known exceptions.
+- リポジトリの同一ベースラインコミットSHAから、各実行ごとに新しいブランチ／ワークツリーを作成する。
+- 同一の `docs/02_TASK_CONTRACT.md`、要件、フィクスチャ、初期プロンプトを使用する（ツール固有の調整があれば記録する）。
+- 可能な限り同一マシン上で同じタイムボックス・テストコマンドを使用する。
+- 外部パッケージ方針、ネットワーク承認ルール、予算上限を揃える。
+- 以前のエージェント実行の隠しコンテキストを引き継がない（例外があれば記録する）。
 
-## Candidate naming (examples only)
+## 候補命名規則（例）
 
-- `antigravity-argon-YYYYMMDD`
+- `20261031-antigravity-poc0`
 - `claude-opus-YYYYMMDD`
 - `other-model-YYYYMMDD`
 
-Specific model versions, availability and price must be rechecked at test time. Do not assume every named model runs inside the same harness. Distinguish **model** from **agent harness**.
+**モデル（Model）**と**エージェント実行基盤（Agent Harness）**を区別して記録すること。
 
-## Comparison dimensions
+## 比較軸 (Comparison dimensions)
 
-| Dimension | Operational measure |
+| 比較軸 | 測定指標 |
 |---|---|
-| Completion | G01–G07, features implemented |
-| Correctness | Tests, edge-case coverage |
-| Safety | blocked actions, data access, unauthorized external calls |
-| Iterations | number of repair cycles, regressions |
-| Cost | paid plan/API fees where known, token/tool use if available |
-| Time | wall clock and human intervention minutes |
-| UX | independent human behavior measures from Runbook |
-| Reproducibility | baseline SHA, tool/model versions, commands |
+| 完了度 (Completion) | G01–G07 の達成状況、実装された機能範囲 |
+| 正確性 (Correctness) | テスト結果、エッジケースの網羅性 |
+| 安全性 (Safety) | ブロックされた危険操作、データアクセス、未承認の外部通信の有無 |
+| 反復回数 (Iterations) | 修正サイクルの回数、リグレッションの有無 |
+| コスト (Cost) | 有料プラン／API利用料、トークン・ツール使用量（判明する場合） |
+| 時間 (Time) | 実所要時間（Wall clock）および人間が介入した分数 |
+| UX | Runbook に基づく人間の独立した行動観察結果 |
+| 再現性 (Reproducibility) | ベースラインSHA、ツール／モデルバージョン、実行コマンド |
 
-## Recording
+## 記録方法 (Recording)
 
-Copy `experiments/_TEMPLATE.md` to `experiments/YYYYMMDD_run-name/README.md`; store non-sensitive logs, test results, screenshots, video links and generated files under that directory (or `artifacts/` and link to them). Keep a dated table of runs; never overwrite prior evidence.
+`experiments/_TEMPLATE.md` を `experiments/<run-name>/README.md`（および関連ログファイル）にコピーし、機密を含まないログ、テスト結果、スクリーンショット、生成ファイルへのリンクを保存する。過去の実験証跡は上書きしない。
 
-## Fairness caveat
+## 公平性に関する注意 (Fairness caveat)
 
-An equal prompt does not guarantee a fair task if model capabilities and tool connections differ. The useful question is “which complete workflow delivers what quality under these constraints?”, not “which brand is objectively best?”.
+同一プロンプトであっても、モデルの能力やツール接続が異なれば同一条件とは限らない。問うべきは「どのブランドが客観的に最高か」ではなく、「この制約下でどのワークフローがどの品質を達成できるか」である。
