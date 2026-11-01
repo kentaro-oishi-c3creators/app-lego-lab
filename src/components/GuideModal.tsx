@@ -593,6 +593,22 @@ export const GuideModal: React.FC<GuideModalProps> = ({
             </div>
           )}
         </div>
+
+        <footer className="guide-modal-footer-note" data-testid="guide-modal-footer-note">
+          <span>
+            {isJa
+              ? '✨ 初回アクセス時に自動表示しています。閉じた後（2回目以降）は、画面上部の「📖 指南書・スライド」ボタンからいつでも任意で開けます。'
+              : '✨ Shown automatically on your first visit. On future visits, open anytime via the "📖 Guide & Slides" button in the top bar.'}
+          </span>
+          <button
+            type="button"
+            className="guide-start-app-btn"
+            data-testid="guide-start-playing-btn"
+            onClick={onClose}
+          >
+            {isJa ? '🎎 指南書を閉じて遊び始める ▶' : '🎎 Close Guide & Start Playing ▶'}
+          </button>
+        </footer>
       </div>
     </div>
   );

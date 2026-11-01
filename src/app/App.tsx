@@ -49,6 +49,8 @@ export interface EventLogEntry {
 
 export type TourState = 0 | 1 | 2 | 'completed' | 'dismissed';
 
+export const GUIDE_SEEN_STORAGE_KEY = 'app_lego_guide_seen_v1';
+
 const DEFAULT_LABELS: Record<BlockType, string> = {
   message: 'Hello!',
   character: 'Happy bot',
@@ -86,10 +88,30 @@ export const App: React.FC = () => {
   const tourStateRef = useRef<TourState>(tourState);
   tourStateRef.current = tourState;
 
-  const [isGuideOpen, setIsGuideOpen] = useState<boolean>(false);
+  const [isGuideOpen, setIsGuideOpen] = useState<boolean>(() => {
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        return window.localStorage.getItem(GUIDE_SEEN_STORAGE_KEY) !== 'true';
+      }
+    } catch {
+      // Ignore storage access errors in restricted environments
+    }
+    return false;
+  });
   const [guideInitialTab, setGuideInitialTab] = useState<
     'slides' | 'manual' | 'architecture'
   >('slides');
+
+  const handleCloseGuide = useCallback(() => {
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        window.localStorage.setItem(GUIDE_SEEN_STORAGE_KEY, 'true');
+      }
+    } catch {
+      // Ignore storage access errors
+    }
+    setIsGuideOpen(false);
+  }, []);
 
   const [characterState, setCharacterState] = useState<
     Record<string, CharacterRuntimeState>
@@ -1185,6 +1207,7 @@ export const App: React.FC = () => {
 
         <Canvas
           graph={history.present}
+          locale={locale}
           characterState={characterState}
           mediaState={mediaState}
           filterState={filterState}
@@ -1201,19 +1224,103 @@ export const App: React.FC = () => {
         />
       </main>
 
+      {/* Mobile Quick-Add & Bottom App Navigation Bar */}
+      <nav
+        className="mobile-bottom-nav"
+        aria-label={locale === 'ja' ? 'スマホ用クイック操作バー' : 'Mobile Quick Navigation'}
+        data-testid="mobile-bottom-nav"
+      >
+        <button
+          type="button"
+          className="mobile-nav-btn"
+          onClick={() => {
+            setGuideInitialTab('slides');
+            setIsGuideOpen(true);
+          }}
+        >
+          <span>📖</span>
+          <small>{locale === 'ja' ? '指南書' : 'Guide'}</small>
+        </button>
+        <button
+          type="button"
+          className="mobile-nav-btn"
+          onClick={() => setIsStudioOpen((v) => !v)}
+        >
+          <span>🧪</span>
+          <small>{locale === 'ja' ? '工房召喚' : 'Studio'}</small>
+        </button>
+        <button
+          type="button"
+          className="mobile-nav-btn"
+          onClick={handleUndo}
+          disabled={!canUndo(history)}
+        >
+          <span>↩️</span>
+          <small>{locale === 'ja' ? '戻す' : 'Undo'}</small>
+        </button>
+        <button
+          type="button"
+          className="mobile-nav-btn"
+          onClick={handleShareUrl}
+        >
+          <span>🔗</span>
+          <small>{locale === 'ja' ? 'URL共有' : 'Share'}</small>
+        </button>
+      </nav>
+
+      <footer className="app-footer" data-testid="app-footer">
+        <div className="app-footer-left">
+          <span className="footer-pill">🛡️ JIDOKA Safe Engine</span>
+          <span>
+            {locale === 'ja'
+              ? '100% ブラウザ内ローカル動作 ・ 外部AI通信ゼロ ・ 個人情報収集ゼロ'
+              : '100% Local Browser Execution • Zero External API • Privacy Safe'}
+          </span>
+        </div>
+        <div className="app-footer-right">
+          <button
+            type="button"
+            className="footer-link-btn"
+            onClick={() => {
+              setGuideInitialTab('manual');
+              setIsGuideOpen(true);
+            }}
+          >
+            📖 {locale === 'ja' ? '操作マニュアルを開く' : 'Open Manual'}
+          </button>
+          <button
+            type="button"
+            className="footer-link-btn"
+            data-testid="reset-first-visit-btn"
+            onClick={() => {
+              try {
+                window.localStorage.removeItem(GUIDE_SEEN_STORAGE_KEY);
+              } catch {
+                // ignore
+              }
+              setGuideInitialTab('slides');
+              setIsGuideOpen(true);
+            }}
+          >
+            ✨ {locale === 'ja' ? '初回ウェルカム表示を再確認' : 'Replay First-Visit Guide'}
+          </button>
+        </div>
+      </footer>
+
       <GuideModal
         isOpen={isGuideOpen}
         locale={locale}
         initialTab={guideInitialTab}
-        onClose={() => setIsGuideOpen(false)}
+        onClose={handleCloseGuide}
         onStartOpeningAct={() => {
+          handleCloseGuide();
           tourStateRef.current = 0;
           setTourState(0);
           handleResetDemo();
         }}
         onLoadPresetAndClose={(presetId) => {
           handleSelectPreset(presetId);
-          setIsGuideOpen(false);
+          handleCloseGuide();
         }}
       />
     </div>
