@@ -27,6 +27,7 @@ export interface CanvasProps {
   counterState: Record<string, CounterRuntimeState>;
   timerSignals: Record<string, number>;
   activeEdgeIds: ReadonlySet<string>;
+  activeNodeIds?: ReadonlySet<string>;
   onSendMessage: (nodeId: string) => void;
   onTimerElapsed: (nodeId: string) => void;
   onChangeFilterStyle: (nodeId: string, style: FilterStyle) => void;
@@ -108,6 +109,7 @@ export const Canvas: React.FC<CanvasProps> = ({
   counterState,
   timerSignals,
   activeEdgeIds,
+  activeNodeIds,
   onSendMessage,
   onTimerElapsed,
   onChangeFilterStyle,
@@ -272,7 +274,7 @@ export const Canvas: React.FC<CanvasProps> = ({
           data-testid={`edge-path-${edge.id}`}
         />
         {isActive && (
-          <circle r="7" className="kotodama-orb" data-testid={`edge-orb-${edge.id}`}>
+          <circle r="8" className="kotodama-orb" data-testid={`edge-orb-${edge.id}`}>
             <animateMotion dur="0.45s" repeatCount="1" path={pathD} />
           </circle>
         )}
@@ -300,6 +302,17 @@ export const Canvas: React.FC<CanvasProps> = ({
 
   return (
     <section className="canvas-wrapper" aria-label="からくり絵巻キャンバス (Block Canvas)">
+      <div className="canvas-stage-section-header">
+        <span className="wiring-badge">
+          ⚙️ {locale === 'ja' ? '裏の仕掛け：からくり配線キャンバス' : 'WIRING CANVAS'}
+        </span>
+        <span className="wiring-sub">
+          {locale === 'ja'
+            ? 'ブロックの【出力ポート ●】と【入力ポート ●】を繋いだり「✂️ 切断」すると、上の「🎭 実演シアター」のアニメーションが変化します'
+            : 'Connect or Cut [●] ports here to re-wire the live animation on the Theater Stage above'}
+        </span>
+      </div>
+
       {pendingPort && (
         <div
           className="connection-mode-banner"
@@ -438,11 +451,14 @@ export const Canvas: React.FC<CanvasProps> = ({
             const ports = getBlockPorts(node.type);
             const inputPorts = ports.filter((p) => p.direction === 'input');
             const outputPorts = ports.filter((p) => p.direction === 'output');
+            const isSpotlight = activeNodeIds?.has(node.id) ?? false;
 
             return (
               <article
                 key={node.id}
-                className={`block-card block-type-${node.type}`}
+                className={`block-card block-type-${node.type} ${
+                  isSpotlight ? 'block-active-spotlight' : ''
+                }`}
                 data-testid={`block-node-${node.id}`}
                 data-block-type={node.type}
                 style={{
@@ -452,6 +468,11 @@ export const Canvas: React.FC<CanvasProps> = ({
                 }}
                 aria-label={`${meta.titleJa} ブロック (${node.id})`}
               >
+                {isSpotlight && (
+                  <div className="block-spotlight-floater" aria-hidden="true">
+                    ⚡ {locale === 'ja' ? '発動中！' : 'FIRING!'}
+                  </div>
+                )}
                 <div
                   className="block-header"
                   onPointerDown={(e) => handleHeaderPointerDown(e, node)}

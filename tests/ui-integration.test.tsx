@@ -267,4 +267,42 @@ describe('App LEGO UI Integration — Gates G04 & G05 + PoC 1 All-in-One', () =>
     fireEvent.click(screen.getByTestId('lang-toggle-btn'));
     expect(banner.textContent).toContain('Act 3 of 3');
   });
+
+  it('Karakuri Live Theater Stage & Sound Engine: Play Stage CTA, Step-by-Step Relay Pipeline, Disconnected Callout, and Sound Toggle', () => {
+    render(<App />);
+
+    const stage = screen.getByTestId('karakuri-theater-stage');
+    expect(stage).toBeInTheDocument();
+    expect(screen.getByTestId('theater-relay-pipeline')).toBeInTheDocument();
+
+    // Click Play Stage Action button -> fires primary Message block -> puppet jumps & narration updates
+    fireEvent.click(screen.getByTestId('theater-play-btn'));
+    expect(
+      screen.getByTestId('character-body-char-1').getAttribute('data-jump-count')
+    ).toBe('1');
+    expect(screen.getByTestId('theater-narration-bar').textContent).toContain(
+      'STEP 1'
+    );
+
+    // Advance relay animation timers -> completes chain narration
+    act(() => {
+      vi.advanceTimersByTime(800);
+    });
+    expect(screen.getByTestId('theater-narration-bar').textContent).toContain(
+      '連鎖完了'
+    );
+
+    // Disconnect edge-1 and click Play Stage Action -> shows explicit Disconnected callout on stage
+    fireEvent.click(screen.getByTestId('chip-disconnect-edge-1'));
+    fireEvent.click(screen.getByTestId('theater-play-btn'));
+    expect(screen.getByTestId('stage-disconnected-callout')).toBeInTheDocument();
+
+    // Toggle sound ON -> OFF -> ON
+    const soundBtn = screen.getByTestId('sound-toggle-btn');
+    expect(soundBtn.getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(soundBtn);
+    expect(soundBtn.getAttribute('aria-pressed')).toBe('false');
+    fireEvent.click(soundBtn);
+    expect(soundBtn.getAttribute('aria-pressed')).toBe('true');
+  });
 });

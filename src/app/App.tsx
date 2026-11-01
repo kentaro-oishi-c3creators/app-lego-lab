@@ -1,6 +1,10 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas } from '../components/Canvas';
 import { GuideModal } from '../components/GuideModal';
+import {
+  KarakuriTheaterStage,
+  RelayStepItem,
+} from '../components/KarakuriTheaterStage';
 import { CharacterRuntimeState } from '../components/blocks/CharacterBlock';
 import { CounterRuntimeState } from '../components/blocks/CounterBlock';
 import { FilterRuntimeState } from '../components/blocks/FilterBlock';
@@ -23,12 +27,14 @@ import {
   encodeGraphToHash,
   PRESET_RECIPES,
 } from '../domain/sampleGraph';
+import { soundEngine } from '../domain/soundEngine';
 import {
   BlockNode,
   BlockType,
   EdgeEndpoint,
   EventPayload,
   FilterStyle,
+  GraphState,
   Position,
 } from '../domain/types';
 import {
@@ -62,9 +68,103 @@ const DEFAULT_LABELS: Record<BlockType, string> = {
 
 const MAX_CHAIN_STEPS = 8;
 
+function buildDefaultRelayPreview(
+  graph: GraphState,
+  locale: Locale
+): RelayStepItem[] {
+  const steps: RelayStepItem[] = [];
+  const metaForType = (
+    type: BlockType
+  ): { icon: string; title: string; action: string; sound: string } => {
+    switch (type) {
+      case 'message':
+        return {
+          icon: '📜',
+          title: locale === 'ja' ? '文を発信' : 'Send Message',
+          action: locale === 'ja' ? '言霊を送り出す' : 'Emit trigger',
+          sound: locale === 'ja' ? '🎵 琴 (ポロロン)' : '🎵 Koto Harp',
+        };
+      case 'filter':
+        return {
+          icon: '⛩️',
+          title: locale === 'ja' ? '言霊フィルター' : 'Kotodama Filter',
+          action: locale === 'ja' ? '雅・武士・祭に変換' : 'Transform text',
+          sound: locale === 'ja' ? '✨ 神楽鈴 (シャン)' : '✨ Kagura Bell',
+        };
+      case 'counter':
+        return {
+          icon: '🥁',
+          title: locale === 'ja' ? '太鼓カウンター' : 'Taiko Counter',
+          action: locale === 'ja' ? '3打で満願奥義発動' : '3 hits -> Combo',
+          sound: locale === 'ja' ? '🥁 和太鼓 (ドドン)' : '🥁 Taiko Drum',
+        };
+      case 'character':
+        return {
+          icon: '🎎',
+          title: locale === 'ja' ? 'からくり人形' : 'Karakuri Puppet',
+          action: locale === 'ja' ? '大ジャンプ＆セリフ' : 'Jump & Speak',
+          sound: locale === 'ja' ? '🥁 小鼓 (ポンッ！)' : '🥁 Tsuzumi',
+        };
+      case 'timer':
+        return {
+          icon: '🕰️',
+          title: locale === 'ja' ? '砂時計タイマー' : 'Hourglass Timer',
+          action: locale === 'ja' ? 'カウント後に次へ' : 'Countdown delay',
+          sound: locale === 'ja' ? '🔔 拍子木・半鐘' : '🔔 Temple Bell',
+        };
+      case 'media-card':
+        return {
+          icon: '🎆',
+          title: locale === 'ja' ? '花火・絵巻舞台' : 'Fireworks Stage',
+          action: locale === 'ja' ? '花火＆雅楽が開演！' : 'Launch Fireworks!',
+          sound: locale === 'ja' ? '🎆 打ち上げ花火' : '🎆 Fireworks',
+        };
+    }
+  };
+
+  const orderedTypes: BlockType[] = [
+    'message',
+    'filter',
+    'counter',
+    'character',
+    'timer',
+    'media-card',
+  ];
+  const seenTypes = new Set<BlockType>();
+  for (const t of orderedTypes) {
+    const found = graph.nodes.find((n) => n.type === t);
+    if (found && !seenTypes.has(t)) {
+      seenTypes.add(t);
+      const m = metaForType(t);
+      steps.push({
+        stepNumber: steps.length + 1,
+        nodeId: found.id,
+        blockType: t,
+        icon: m.icon,
+        title: `${m.title} (${found.id})`,
+        actionText: m.action,
+        soundLabel: m.sound,
+        status: 'pending',
+      });
+    }
+  }
+  return steps;
+}
+
 export const App: React.FC = () => {
   const [locale, setLocale] = useState<Locale>('ja');
+  const localeRef = useRef<Locale>(locale);
+  localeRef.current = locale;
   const t = UI_TEXT[locale];
+
+  const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
+  const handleToggleSound = useCallback(() => {
+    setSoundEnabled((prev) => {
+      const next = !prev;
+      soundEngine.setEnabled(next);
+      return next;
+    });
+  }, []);
 
   const [history, setHistory] = useState<HistoryState>(() => {
     if (typeof window !== 'undefined' && window.location.hash.startsWith('#emaki=')) {
@@ -130,8 +230,28 @@ export const App: React.FC = () => {
   const [activeEdgeIds, setActiveEdgeIds] = useState<ReadonlySet<string>>(
     () => new Set()
   );
+  const [activeNodeIds, setActiveNodeIds] = useState<ReadonlySet<string>>(
+    () => new Set()
+  );
   const [warningBanner, setWarningBanner] = useState<string | null>(null);
   const [shareToast, setShareToast] = useState<string | null>(null);
+
+  // Live Theater Stage & Relay Visualizer state
+  const [liveRelaySteps, setLiveRelaySteps] = useState<RelayStepItem[] | null>(
+    null
+  );
+  const [liveNarration, setLiveNarration] = useState<string | null>(null);
+  const [lastActionStatus, setLastActionStatus] = useState<
+    'idle' | 'running' | 'completed' | 'disconnected'
+  >('idle');
+  const [lastSentText, setLastSentText] = useState<string | null>(null);
+  const [lastTransformedText, setLastTransformedText] = useState<string | null>(
+    null
+  );
+  const [lastFilterStyle, setLastFilterStyle] = useState<FilterStyle | null>(
+    null
+  );
+  const [isTimerCounting, setIsTimerCounting] = useState<boolean>(false);
 
   // Karakuri Craft Studio ("からくり工房") state
   const [isStudioOpen, setIsStudioOpen] = useState<boolean>(false);
@@ -157,17 +277,21 @@ export const App: React.FC = () => {
   const chainTimeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const edgeHighlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const clearRelayTimeouts = useCallback(() => {
+    chainTimeoutsRef.current.forEach(clearTimeout);
+    chainTimeoutsRef.current = [];
+  }, []);
+
   useEffect(() => {
     const jumpTimeouts = jumpTimeoutsRef.current;
-    const chainTimeouts = chainTimeoutsRef.current;
     return () => {
       Object.values(jumpTimeouts).forEach(clearTimeout);
-      chainTimeouts.forEach(clearTimeout);
+      clearRelayTimeouts();
       if (edgeHighlightTimeoutRef.current) {
         clearTimeout(edgeHighlightTimeoutRef.current);
       }
     };
-  }, []);
+  }, [clearRelayTimeouts]);
 
   const appendLog = useCallback(
     (summary: string, kind: EventLogEntry['kind']) => {
@@ -189,6 +313,7 @@ export const App: React.FC = () => {
   );
 
   const resetRuntimeTransientState = useCallback(() => {
+    clearRelayTimeouts();
     setCharacterState({});
     setMediaState({});
     setFilterState({});
@@ -196,15 +321,90 @@ export const App: React.FC = () => {
     setCounterState({});
     setTimerSignals({});
     setActiveEdgeIds(new Set());
-  }, []);
+    setActiveNodeIds(new Set());
+    setLiveRelaySteps(null);
+    setLiveNarration(null);
+    setLastActionStatus('idle');
+    setLastSentText(null);
+    setLastTransformedText(null);
+    setLastFilterStyle(null);
+    setIsTimerCounting(false);
+  }, [clearRelayTimeouts]);
+
+  const scheduleRelayAnimation = useCallback(
+    (recordedSteps: RelayStepItem[]) => {
+      clearRelayTimeouts();
+      if (recordedSteps.length === 0) {
+        return;
+      }
+
+      // Immediately show Step 1 active
+      setLastActionStatus('running');
+      setLiveRelaySteps(
+        recordedSteps.map((s, idx) => ({
+          ...s,
+          status: idx === 0 ? 'active' : 'pending',
+        }))
+      );
+      setActiveNodeIds(new Set([recordedSteps[0].nodeId]));
+      setLiveNarration(
+        `🎬 STEP 1/${recordedSteps.length}: ${recordedSteps[0].icon} ${recordedSteps[0].title} — ${recordedSteps[0].actionText} (${recordedSteps[0].soundLabel})`
+      );
+
+      // Stagger subsequent steps every 260ms so the user visually & aurally follows the chain!
+      recordedSteps.forEach((step, idx) => {
+        if (idx === 0) return;
+        const tId = setTimeout(() => {
+          soundEngine.playWireTravel(idx);
+          setActiveNodeIds(new Set([step.nodeId]));
+          setLiveRelaySteps((prev) =>
+            (prev ?? recordedSteps).map((s, sIdx) => ({
+              ...s,
+              status:
+                sIdx < idx ? 'done' : sIdx === idx ? 'active' : 'pending',
+            }))
+          );
+          setLiveNarration(
+            `🎬 STEP ${idx + 1}/${recordedSteps.length}: ${step.icon} ${step.title} — ${step.actionText} (${step.soundLabel})`
+          );
+        }, idx * 240);
+        chainTimeoutsRef.current.push(tId);
+      });
+
+      // Mark all steps completed after the cascade finishes
+      const finishTime = recordedSteps.length * 240 + 260;
+      const doneId = setTimeout(() => {
+        setActiveNodeIds(new Set());
+        setLiveRelaySteps((prev) =>
+          (prev ?? recordedSteps).map((s) => ({
+            ...s,
+            status: s.status === 'blocked' ? 'blocked' : 'done',
+          }))
+        );
+        const lastStep = recordedSteps[recordedSteps.length - 1];
+        setLastActionStatus('completed');
+        setLiveNarration(
+          localeRef.current === 'ja'
+            ? `💮 連鎖完了！ (${recordedSteps.map((s) => s.icon).join(' ➔ ')}) — 最終結果: ${lastStep.actionText}`
+            : `💮 Chain Complete! (${recordedSteps.map((s) => s.icon).join(' ➔ ')}) — Result: ${lastStep.actionText}`
+        );
+      }, finishTime);
+      chainTimeoutsRef.current.push(doneId);
+    },
+    [clearRelayTimeouts]
+  );
 
   const triggerRuntimePort = useCallback(
     (
       sourceNodeId: string,
       sourcePortId: string,
       incomingPayload?: EventPayload,
-      chainDepth: number = 1
+      chainDepth: number = 1,
+      accumulatedSteps?: RelayStepItem[]
     ) => {
+      const isJa = localeRef.current === 'ja';
+      const stepsAccumulator: RelayStepItem[] = accumulatedSteps ?? [];
+
       if (chainDepth > MAX_CHAIN_STEPS) {
         appendLog(
           `安全上限 (MAX_CHAIN_STEPS=${MAX_CHAIN_STEPS}) により連鎖を停止しました`,
@@ -221,11 +421,41 @@ export const App: React.FC = () => {
         style: 'normal',
       };
 
-      const result = dispatchEvent(currentGraph, sourceNodeId, sourcePortId);
+      // Record Step 1 if this is the root trigger
+      if (chainDepth === 1 && sourceNode) {
+        if (sourceNode.type === 'message') {
+          soundEngine.playMessageSend();
+          setLastSentText(effectivePayload.text ?? 'Hello!');
+          setLastTransformedText(null);
+          stepsAccumulator.push({
+            stepNumber: 1,
+            nodeId: sourceNode.id,
+            blockType: 'message',
+            icon: '📜',
+            title: isJa ? `文 (${sourceNode.id})` : `Message (${sourceNode.id})`,
+            actionText: isJa
+              ? `「${effectivePayload.text}」を発信！`
+              : `Sent "${effectivePayload.text}"`,
+            soundLabel: isJa ? '🎵 琴 (ポロロン♪)' : '🎵 Koto Harp',
+            status: 'active',
+          });
+        } else if (sourceNode.type === 'timer') {
+          soundEngine.playTimerElapsed();
+          setIsTimerCounting(false);
+          stepsAccumulator.push({
+            stepNumber: 1,
+            nodeId: sourceNode.id,
+            blockType: 'timer',
+            icon: '🕰️',
+            title: isJa ? `砂時計 (${sourceNode.id})` : `Timer (${sourceNode.id})`,
+            actionText: isJa ? 'カウント満了！信号を発火' : 'Countdown elapsed!',
+            soundLabel: isJa ? '🔔 半鐘 (ゴーン！)' : '🔔 Temple Bell',
+            status: 'active',
+          });
+        }
+      }
 
-      // Only process direct 1-hop deliveries from the firing port so multi-stage
-      // blocks (Filter, Counter, Character.landed, Timer.start) control their own
-      // transformation, counting, and timing deterministically.
+      const result = dispatchEvent(currentGraph, sourceNodeId, sourcePortId);
       const directDeliveries = result.deliveries.filter((d) => d.hop === 1);
 
       if (directDeliveries.length === 0) {
@@ -233,6 +463,30 @@ export const App: React.FC = () => {
           `${sourceNodeId}.${sourcePortId} -> (未接続のため反応なし / unhandled)`,
           'unhandled'
         );
+        if (chainDepth === 1) {
+          soundEngine.playFeedback('error');
+          setLastActionStatus('disconnected');
+          setLiveRelaySteps([
+            ...stepsAccumulator,
+            {
+              stepNumber: stepsAccumulator.length + 1,
+              nodeId: 'disconnected',
+              blockType: 'character',
+              icon: '✂️',
+              title: isJa ? '水引が未接続・切断中' : 'Cord Disconnected',
+              actionText: isJa
+                ? '線が繋がっていないため、ここで信号がストップしました'
+                : 'Signal stopped here because the Mizuhiki cord is cut',
+              soundLabel: isJa ? '🔇 信号停止' : '🔇 Stopped',
+              status: 'blocked',
+            },
+          ]);
+          setLiveNarration(
+            isJa
+              ? `✂️ ${sourceNodeId}.${sourcePortId} の水引が切れているため、からくり人形へ信号が届きませんでした！（「↩️ Undo」で復活できます）`
+              : `✂️ The Mizuhiki cord from ${sourceNodeId}.${sourcePortId} is disconnected — signal stopped!`
+          );
+        }
         return;
       }
 
@@ -253,6 +507,7 @@ export const App: React.FC = () => {
           delivery.targetPortId === 'jump'
         ) {
           const speechText = effectivePayload.text;
+          soundEngine.playCharacterJump();
           setCharacterState((prev) => ({
             ...prev,
             [targetId]: {
@@ -261,6 +516,19 @@ export const App: React.FC = () => {
               lastSpeechText: speechText,
             },
           }));
+
+          stepsAccumulator.push({
+            stepNumber: stepsAccumulator.length + 1,
+            nodeId: targetId,
+            blockType: 'character',
+            icon: '🎎',
+            title: isJa ? `からくり人形 (${targetId})` : `Puppet (${targetId})`,
+            actionText: isJa
+              ? `大ジャンプ！💬「${speechText}」`
+              : `Jumped! 💬 "${speechText}"`,
+            soundLabel: isJa ? '🥁 小鼓 (ポンッ！)' : '🥁 Tsuzumi Drum',
+            status: 'active',
+          });
 
           if (jumpTimeoutsRef.current[targetId]) {
             clearTimeout(jumpTimeoutsRef.current[targetId]);
@@ -291,22 +559,44 @@ export const App: React.FC = () => {
               tourStateRef.current = 'completed';
               setTourState('completed');
             }
-            triggerRuntimePort(targetId, 'landed', effectivePayload, chainDepth + 1);
+            triggerRuntimePort(
+              targetId,
+              'landed',
+              effectivePayload,
+              chainDepth + 1,
+              stepsAccumulator
+            );
           }
         } else if (
           delivery.targetBlockType === 'media-card' &&
           delivery.targetPortId === 'play'
         ) {
+          let nextPlayingState = true;
           setMediaState((prev) => {
             const currentPlaying = prev[targetId]?.isPlaying ?? false;
             const currentCount = prev[targetId]?.toggleCount ?? 0;
+            nextPlayingState = !currentPlaying;
             return {
               ...prev,
               [targetId]: {
-                isPlaying: !currentPlaying,
+                isPlaying: nextPlayingState,
                 toggleCount: currentCount + 1,
               },
             };
+          });
+          soundEngine.playStageFinale(nextPlayingState);
+
+          stepsAccumulator.push({
+            stepNumber: stepsAccumulator.length + 1,
+            nodeId: targetId,
+            blockType: 'media-card',
+            icon: '🎆',
+            title: isJa ? `絵巻舞台 (${targetId})` : `Stage (${targetId})`,
+            actionText: isJa
+              ? '打ち上げ花火＆雅楽フィナーレ開演！'
+              : 'Fireworks & Gagaku Finale Launched!',
+            soundLabel: isJa ? '🎆 花火 (ドォーン！)' : '🎆 Fireworks',
+            status: 'active',
           });
         } else if (
           delivery.targetBlockType === 'filter' &&
@@ -317,6 +607,9 @@ export const App: React.FC = () => {
             effectivePayload.text || 'Hello!',
             style
           );
+          soundEngine.playFilterTransform(style);
+          setLastTransformedText(transformedText);
+          setLastFilterStyle(style);
           setFilterState((prev) => ({
             ...prev,
             [targetId]: {
@@ -326,6 +619,19 @@ export const App: React.FC = () => {
             },
           }));
 
+          stepsAccumulator.push({
+            stepNumber: stepsAccumulator.length + 1,
+            nodeId: targetId,
+            blockType: 'filter',
+            icon: '⛩️',
+            title: isJa ? `言霊変換 (${targetId})` : `Filter (${targetId})`,
+            actionText: isJa
+              ? `言霊変身 ➔ 「${transformedText}」`
+              : `Transformed ➔ "${transformedText}"`,
+            soundLabel: isJa ? '✨ 神楽鈴 (シャラン♪)' : '✨ Kagura Bell',
+            status: 'active',
+          });
+
           const hasOutEdges = currentGraph.edges.some(
             (e) => e.from.nodeId === targetId && e.from.portId === 'out'
           );
@@ -334,7 +640,8 @@ export const App: React.FC = () => {
               targetId,
               'out',
               { text: transformedText, style },
-              chainDepth + 1
+              chainDepth + 1,
+              stepsAccumulator
             );
           }
         } else if (
@@ -352,6 +659,7 @@ export const App: React.FC = () => {
           };
           const nextHit = prevCounter.currentCount + 1;
           if (nextHit >= targetThreshold) {
+            soundEngine.playTaikoHit(true);
             const nextState: CounterRuntimeState = {
               currentCount: 0,
               comboCount: prevCounter.comboCount + 1,
@@ -362,6 +670,19 @@ export const App: React.FC = () => {
               [targetId]: nextState,
             };
             setCounterState({ ...counterStateRef.current });
+
+            stepsAccumulator.push({
+              stepNumber: stepsAccumulator.length + 1,
+              nodeId: targetId,
+              blockType: 'counter',
+              icon: '🥁',
+              title: isJa ? `三連大太鼓 (${targetId})` : `Taiko (${targetId})`,
+              actionText: isJa
+                ? `🎇 ${targetThreshold}打達成！満願奥義「combo」発動！`
+                : `🎇 ${targetThreshold}/${targetThreshold} Hits! COMBO FIRED!`,
+              soundLabel: isJa ? '🏮 大太鼓 (ドドーン！)' : '🏮 Grand Taiko',
+              status: 'active',
+            });
 
             const hasComboEdges = currentGraph.edges.some(
               (e) => e.from.nodeId === targetId && e.from.portId === 'combo'
@@ -374,10 +695,12 @@ export const App: React.FC = () => {
                   text: `🎇 満願奥義・${effectivePayload.text || 'ドドン！'}`,
                   style: effectivePayload.style,
                 },
-                chainDepth + 1
+                chainDepth + 1,
+                stepsAccumulator
               );
             }
           } else {
+            soundEngine.playTaikoHit(false);
             const nextState: CounterRuntimeState = {
               currentCount: nextHit,
               comboCount: prevCounter.comboCount,
@@ -388,15 +711,48 @@ export const App: React.FC = () => {
               [targetId]: nextState,
             };
             setCounterState({ ...counterStateRef.current });
+
+            stepsAccumulator.push({
+              stepNumber: stepsAccumulator.length + 1,
+              nodeId: targetId,
+              blockType: 'counter',
+              icon: '🥁',
+              title: isJa ? `三連大太鼓 (${targetId})` : `Taiko (${targetId})`,
+              actionText: isJa
+                ? `太鼓 ${nextHit}/${targetThreshold} 打目！（あと ${
+                    targetThreshold - nextHit
+                  } 回で奥義発動）`
+                : `Hit ${nextHit}/${targetThreshold}! (${
+                    targetThreshold - nextHit
+                  } more for Combo)`,
+              soundLabel: isJa ? '🥁 和太鼓 (ドン！)' : '🥁 Taiko Hit',
+              status: 'active',
+            });
           }
         } else if (
           delivery.targetBlockType === 'timer' &&
           delivery.targetPortId === 'start'
         ) {
+          soundEngine.playTimerTick();
+          setIsTimerCounting(true);
           setTimerSignals((prev) => ({
             ...prev,
             [targetId]: (prev[targetId] ?? 0) + 1,
           }));
+
+          const sec = targetNode?.data.durationSeconds ?? 3;
+          stepsAccumulator.push({
+            stepNumber: stepsAccumulator.length + 1,
+            nodeId: targetId,
+            blockType: 'timer',
+            icon: '⏳',
+            title: isJa ? `砂時計 (${targetId})` : `Hourglass (${targetId})`,
+            actionText: isJa
+              ? `${sec}秒カウントダウン開始…（満了後に舞台へ連鎖！）`
+              : `${sec}s countdown started...`,
+            soundLabel: isJa ? '🪵 拍子木 (カチッ)' : '🪵 Woodblock Tick',
+            status: 'active',
+          });
         }
       }
 
@@ -411,8 +767,12 @@ export const App: React.FC = () => {
       edgeHighlightTimeoutRef.current = setTimeout(() => {
         setActiveEdgeIds(new Set());
       }, 650);
+
+      if (chainDepth === 1 && stepsAccumulator.length > 0) {
+        scheduleRelayAnimation(stepsAccumulator);
+      }
     },
-    [appendLog]
+    [appendLog, scheduleRelayAnimation]
   );
 
   const handleSendMessage = useCallback(
@@ -429,15 +789,34 @@ export const App: React.FC = () => {
   const handleTimerElapsed = useCallback(
     (nodeId: string) => {
       triggerRuntimePort(nodeId, 'elapsed', {
-        text: '⏳ 刻満了！',
+        text: '⏳ 刻満了！花火開演！',
         style: 'normal',
       });
     },
     [triggerRuntimePort]
   );
 
+  const handlePlayPrimaryAction = useCallback(() => {
+    const currentGraph = historyRef.current.present;
+    const firstMsg = currentGraph.nodes.find((n) => n.type === 'message');
+    if (firstMsg) {
+      handleSendMessage(firstMsg.id);
+      return;
+    }
+    const firstTimer = currentGraph.nodes.find((n) => n.type === 'timer');
+    if (firstTimer) {
+      soundEngine.playTimerTick();
+      setIsTimerCounting(true);
+      setTimerSignals((prev) => ({
+        ...prev,
+        [firstTimer.id]: (prev[firstTimer.id] ?? 0) + 1,
+      }));
+    }
+  }, [handleSendMessage]);
+
   const handleChangeFilterStyle = useCallback(
     (nodeId: string, style: FilterStyle) => {
+      soundEngine.playFilterTransform(style);
       const currentGraph = historyRef.current.present;
       const nextGraph = updateNodeData(currentGraph, nodeId, {
         filterStyle: style,
@@ -457,6 +836,7 @@ export const App: React.FC = () => {
       });
 
       if (!validation.valid) {
+        soundEngine.playFeedback('error');
         const msg =
           validation.message ?? '不正な接続のため拒否されました (Invalid connection).';
         setWarningBanner(`[${validation.code}] ${msg}`);
@@ -467,6 +847,7 @@ export const App: React.FC = () => {
         return;
       }
 
+      soundEngine.playWireTravel(1);
       setWarningBanner(null);
       commitHistory(pushHistory(historyRef.current, nextGraph));
       if (addedEdge) {
@@ -486,9 +867,16 @@ export const App: React.FC = () => {
       if (!targetEdge) {
         return;
       }
+      soundEngine.playFeedback('cut');
       setWarningBanner(null);
       const nextGraph = removeEdge(currentGraph, edgeId);
       commitHistory(pushHistory(historyRef.current, nextGraph));
+      setLastActionStatus('disconnected');
+      setLiveNarration(
+        localeRef.current === 'ja'
+          ? `✂️ 水引 (${targetEdge.from.nodeId}.${targetEdge.from.portId} → ${targetEdge.to.nodeId}.${targetEdge.to.portId}) を切断しました！この状態で Send を押すと人形が動かないことを確かめられます。`
+          : `✂️ Cut cord (${targetEdge.from.nodeId}.${targetEdge.from.portId} → ${targetEdge.to.nodeId}.${targetEdge.to.portId})! Press Send to see the signal stop.`
+      );
       appendLog(
         `接続切断: ${targetEdge.from.nodeId}.${targetEdge.from.portId} -x- ${targetEdge.to.nodeId}.${targetEdge.to.portId}`,
         'system'
@@ -503,6 +891,7 @@ export const App: React.FC = () => {
 
   const handleAddBlock = useCallback(
     (type: BlockType, customData?: BlockNode['data']) => {
+      soundEngine.playWireTravel(0);
       setWarningBanner(null);
       const currentGraph = historyRef.current.present;
       const prefix =
@@ -570,7 +959,7 @@ export const App: React.FC = () => {
       });
       setLastCraftReceipt(
         locale === 'ja'
-          ? `💮 JIDOKA 検査 PASS [G02:型安全 / G06:eval禁止・無害化] → 「${summoned.data.label}」(${summoned.id}) を絵巻へ召喚しました！`
+          ? `💮 JIDOKA 検査 PASS [G02:型安全 / G06:eval禁止・無害化] → 「${summoned.data.label}}」(${summoned.id}) を絵巻へ召喚しました！`
           : `💮 JIDOKA PASS [G02:Type-Safe / G06:Sanitized] → Summoned "${summoned.data.label}" (${summoned.id}) onto the scroll!`
       );
     },
@@ -591,6 +980,7 @@ export const App: React.FC = () => {
       if (!preset) {
         return;
       }
+      soundEngine.playFeedback('undo');
       setWarningBanner(null);
       setShareToast(null);
       setActivePresetId(presetId);
@@ -645,8 +1035,15 @@ export const App: React.FC = () => {
     if (!canUndo(historyRef.current)) {
       return;
     }
+    soundEngine.playFeedback('undo');
     setWarningBanner(null);
     commitHistory(undoHistory(historyRef.current));
+    setLastActionStatus('idle');
+    setLiveNarration(
+      localeRef.current === 'ja'
+        ? '↩️ Undo で水引の接続を元に戻しました！もう一度 Send を押すと再びからくり人形が踊ります！'
+        : '↩️ Restored previous state with Undo! Press Send again to see the puppet jump!'
+    );
     appendLog('Undo: 直前の絵巻状態を復元しました', 'system');
     if (tourStateRef.current === 1) {
       tourStateRef.current = 2;
@@ -697,6 +1094,13 @@ export const App: React.FC = () => {
       }, 60);
     }
   }, [handleDisconnectEdge, handleSelectPreset, handleSendMessage]);
+
+  const displayedRelaySteps = useMemo(() => {
+    if (liveRelaySteps && liveRelaySteps.length > 0) {
+      return liveRelaySteps;
+    }
+    return buildDefaultRelayPreview(history.present, locale);
+  }, [history.present, liveRelaySteps, locale]);
 
   const currentStepData =
     typeof tourState === 'number' ? t.openingAct.steps[tourState] : null;
@@ -1075,8 +1479,8 @@ export const App: React.FC = () => {
                 </strong>
                 <small>
                   {locale === 'ja'
-                    ? '出力: sent (trigger)'
-                    : 'Out: sent (trigger)'}
+                    ? '出力: sent (🎵琴の音)'
+                    : 'Out: sent (🎵Koto)'}
                 </small>
               </span>
             </button>
@@ -1096,7 +1500,7 @@ export const App: React.FC = () => {
                 </strong>
                 <small>
                   {locale === 'ja'
-                    ? '入: jump / 出: landed (着地連鎖)'
+                    ? '入: jump / 出: landed (🥁小鼓)'
                     : 'In: jump / Out: landed'}
                 </small>
               </span>
@@ -1117,7 +1521,7 @@ export const App: React.FC = () => {
                 </strong>
                 <small>
                   {locale === 'ja'
-                    ? '入: start / 出: elapsed'
+                    ? '入: start / 出: elapsed (🔔半鐘)'
                     : 'In: start / Out: elapsed'}
                 </small>
               </span>
@@ -1138,8 +1542,8 @@ export const App: React.FC = () => {
                 </strong>
                 <small>
                   {locale === 'ja'
-                    ? '入力: play (演舞切替)'
-                    : 'In: play (Toggle Stage)'}
+                    ? '入力: play (🎆打ち上げ花火)'
+                    : 'In: play (🎆Fireworks)'}
                 </small>
               </span>
             </button>
@@ -1159,8 +1563,8 @@ export const App: React.FC = () => {
                 </strong>
                 <small>
                   {locale === 'ja'
-                    ? '入: in → 出: out (雅/武士/祭)'
-                    : 'In: in → Out: out (Poetic/Samurai)'}
+                    ? '入: in → 出: out (✨神楽鈴)'
+                    : 'In: in → Out: out (✨Bell)'}
                 </small>
               </span>
             </button>
@@ -1180,7 +1584,7 @@ export const App: React.FC = () => {
                 </strong>
                 <small>
                   {locale === 'ja'
-                    ? '入: hit (3打) → 出: combo'
+                    ? '入: hit (3打) → 出: combo (🥁和太鼓)'
                     : 'In: hit (3x) → Out: combo'}
                 </small>
               </span>
@@ -1205,23 +1609,46 @@ export const App: React.FC = () => {
           </section>
         </aside>
 
-        <Canvas
-          graph={history.present}
-          locale={locale}
-          characterState={characterState}
-          mediaState={mediaState}
-          filterState={filterState}
-          counterState={counterState}
-          timerSignals={timerSignals}
-          activeEdgeIds={activeEdgeIds}
-          onSendMessage={handleSendMessage}
-          onTimerElapsed={handleTimerElapsed}
-          onChangeFilterStyle={handleChangeFilterStyle}
-          onConnect={handleConnect}
-          onDisconnectEdge={handleDisconnectEdge}
-          onRemoveNode={handleRemoveNode}
-          onMoveNode={handleMoveNode}
-        />
+        <div className="main-stage-column">
+          <KarakuriTheaterStage
+            graph={history.present}
+            locale={locale}
+            soundEnabled={soundEnabled}
+            onToggleSound={handleToggleSound}
+            characterState={characterState}
+            mediaState={mediaState}
+            filterState={filterState}
+            counterState={counterState}
+            activeNodeIds={activeNodeIds}
+            relaySteps={displayedRelaySteps}
+            liveNarration={liveNarration}
+            lastActionStatus={lastActionStatus}
+            lastSentText={lastSentText}
+            lastTransformedText={lastTransformedText}
+            lastFilterStyle={lastFilterStyle}
+            isTimerCounting={isTimerCounting}
+            onPlayPrimaryAction={handlePlayPrimaryAction}
+          />
+
+          <Canvas
+            graph={history.present}
+            locale={locale}
+            characterState={characterState}
+            mediaState={mediaState}
+            filterState={filterState}
+            counterState={counterState}
+            timerSignals={timerSignals}
+            activeEdgeIds={activeEdgeIds}
+            activeNodeIds={activeNodeIds}
+            onSendMessage={handleSendMessage}
+            onTimerElapsed={handleTimerElapsed}
+            onChangeFilterStyle={handleChangeFilterStyle}
+            onConnect={handleConnect}
+            onDisconnectEdge={handleDisconnectEdge}
+            onRemoveNode={handleRemoveNode}
+            onMoveNode={handleMoveNode}
+          />
+        </div>
       </main>
 
       {/* Mobile Quick-Add & Bottom App Navigation Bar */}
@@ -1230,6 +1657,14 @@ export const App: React.FC = () => {
         aria-label={locale === 'ja' ? 'スマホ用クイック操作バー' : 'Mobile Quick Navigation'}
         data-testid="mobile-bottom-nav"
       >
+        <button
+          type="button"
+          className="mobile-nav-btn"
+          onClick={handlePlayPrimaryAction}
+        >
+          <span>🎬</span>
+          <small>{locale === 'ja' ? '舞台実演' : 'Play'}</small>
+        </button>
         <button
           type="button"
           className="mobile-nav-btn"
@@ -1273,8 +1708,8 @@ export const App: React.FC = () => {
           <span className="footer-pill">🛡️ JIDOKA Safe Engine</span>
           <span>
             {locale === 'ja'
-              ? '100% ブラウザ内ローカル動作 ・ 外部AI通信ゼロ ・ 個人情報収集ゼロ'
-              : '100% Local Browser Execution • Zero External API • Privacy Safe'}
+              ? '100% ブラウザ内ローカル動作 ・ Web Audio 和楽器シンセ内蔵 ・ 外部AI通信ゼロ'
+              : '100% Local Browser Execution • Built-in Web Audio Wa-Synth • Zero External API'}
           </span>
         </div>
         <div className="app-footer-right">
