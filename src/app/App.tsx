@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Canvas } from '../components/Canvas';
+import { GuideModal } from '../components/GuideModal';
 import { CharacterRuntimeState } from '../components/blocks/CharacterBlock';
 import { CounterRuntimeState } from '../components/blocks/CounterBlock';
 import { FilterRuntimeState } from '../components/blocks/FilterBlock';
@@ -13,6 +14,7 @@ import {
   transformKotodama,
   updateNodeData,
 } from '../domain/graph';
+import { Locale, UI_TEXT } from '../domain/i18n';
 import { dispatchEvent } from '../domain/runtime';
 import {
   createEmptyGraph,
@@ -45,6 +47,8 @@ export interface EventLogEntry {
   kind: 'dispatch' | 'unhandled' | 'warning' | 'system';
 }
 
+export type TourState = 0 | 1 | 2 | 'completed' | 'dismissed';
+
 const DEFAULT_LABELS: Record<BlockType, string> = {
   message: 'Hello!',
   character: 'Happy bot',
@@ -57,6 +61,9 @@ const DEFAULT_LABELS: Record<BlockType, string> = {
 const MAX_CHAIN_STEPS = 8;
 
 export const App: React.FC = () => {
+  const [locale, setLocale] = useState<Locale>('ja');
+  const t = UI_TEXT[locale];
+
   const [history, setHistory] = useState<HistoryState>(() => {
     if (typeof window !== 'undefined' && window.location.hash.startsWith('#emaki=')) {
       const decoded = decodeGraphFromHash(window.location.hash);
@@ -75,6 +82,15 @@ export const App: React.FC = () => {
   }, []);
 
   const [activePresetId, setActivePresetId] = useState<string>('poc0-basic');
+  const [tourState, setTourState] = useState<TourState>(0);
+  const tourStateRef = useRef<TourState>(tourState);
+  tourStateRef.current = tourState;
+
+  const [isGuideOpen, setIsGuideOpen] = useState<boolean>(false);
+  const [guideInitialTab, setGuideInitialTab] = useState<
+    'slides' | 'manual' | 'architecture'
+  >('slides');
+
   const [characterState, setCharacterState] = useState<
     Record<string, CharacterRuntimeState>
   >({});
@@ -238,11 +254,21 @@ export const App: React.FC = () => {
             }));
           }, 600);
 
+          // Advance Opening Act Step 1 -> Step 2 when puppet jumps!
+          if (tourStateRef.current === 0) {
+            tourStateRef.current = 1;
+            setTourState(1);
+          }
+
           // If Character.landed has outgoing connections, fire landed trigger!
           const hasLandedEdges = currentGraph.edges.some(
             (e) => e.from.nodeId === targetId && e.from.portId === 'landed'
           );
           if (hasLandedEdges) {
+            if (tourStateRef.current === 2) {
+              tourStateRef.current = 'completed';
+              setTourState('completed');
+            }
             triggerRuntimePort(targetId, 'landed', effectivePayload, chainDepth + 1);
           }
         } else if (
@@ -445,6 +471,10 @@ export const App: React.FC = () => {
         `接続切断: ${targetEdge.from.nodeId}.${targetEdge.from.portId} -x- ${targetEdge.to.nodeId}.${targetEdge.to.portId}`,
         'system'
       );
+      if (tourStateRef.current === 1) {
+        tourStateRef.current = 2;
+        setTourState(2);
+      }
     },
     [appendLog, commitHistory]
   );
@@ -507,7 +537,9 @@ export const App: React.FC = () => {
   const handleCraftSummon = useCallback(
     (e: React.FormEvent) => {
       e.preventDefault();
-      const safeLabel = craftLabel.replace(/[<>]/g, '').trim().slice(0, 40) || DEFAULT_LABELS[craftType];
+      const safeLabel =
+        craftLabel.replace(/[<>]/g, '').trim().slice(0, 40) ||
+        DEFAULT_LABELS[craftType];
       const summoned = handleAddBlock(craftType, {
         label: safeLabel,
         filterStyle: craftFilterStyle,
@@ -515,10 +547,20 @@ export const App: React.FC = () => {
         durationSeconds: craftDuration,
       });
       setLastCraftReceipt(
-        `💮 JIDOKA 検査 PASS [G02:型安全 / G06:eval禁止・無害化] → 「${summoned.data.label}」(${summoned.id}) を絵巻へ召喚しました！`
+        locale === 'ja'
+          ? `💮 JIDOKA 検査 PASS [G02:型安全 / G06:eval禁止・無害化] → 「${summoned.data.label}」(${summoned.id}) を絵巻へ召喚しました！`
+          : `💮 JIDOKA PASS [G02:Type-Safe / G06:Sanitized] → Summoned "${summoned.data.label}" (${summoned.id}) onto the scroll!`
       );
     },
-    [craftDuration, craftFilterStyle, craftLabel, craftTargetCount, craftType, handleAddBlock]
+    [
+      craftDuration,
+      craftFilterStyle,
+      craftLabel,
+      craftTargetCount,
+      craftType,
+      handleAddBlock,
+      locale,
+    ]
   );
 
   const handleSelectPreset = useCallback(
@@ -547,9 +589,13 @@ export const App: React.FC = () => {
         navigator.clipboard.writeText(fullUrl).catch(() => {});
       }
     }
-    setShareToast(`🔗 絵巻URLを生成しました (${hash.slice(0, 28)}...)`);
+    setShareToast(
+      locale === 'ja'
+        ? `🔗 絵巻URLを生成しました (${hash.slice(0, 28)}...)`
+        : `🔗 Scroll URL generated (${hash.slice(0, 28)}...)`
+    );
     appendLog('絵巻URLをハッシュに保存・共有準備しました', 'system');
-  }, [appendLog]);
+  }, [appendLog, locale]);
 
   const handleRemoveNode = useCallback(
     (nodeId: string) => {
@@ -580,6 +626,10 @@ export const App: React.FC = () => {
     setWarningBanner(null);
     commitHistory(undoHistory(historyRef.current));
     appendLog('Undo: 直前の絵巻状態を復元しました', 'system');
+    if (tourStateRef.current === 1) {
+      tourStateRef.current = 2;
+      setTourState(2);
+    }
   }, [appendLog, commitHistory]);
 
   const handleResetDemo = useCallback(() => {
@@ -600,22 +650,70 @@ export const App: React.FC = () => {
     appendLog('Empty Canvas: 白紙の絵巻にしました', 'system');
   }, [appendLog, commitHistory, resetRuntimeTransientState]);
 
+  const handleOpeningActQuickAction = useCallback(() => {
+    if (tourStateRef.current === 0) {
+      const firstMsg = historyRef.current.present.nodes.find(
+        (n) => n.type === 'message'
+      );
+      if (firstMsg) {
+        handleSendMessage(firstMsg.id);
+      }
+    } else if (tourStateRef.current === 1) {
+      const firstEdge = historyRef.current.present.edges[0];
+      if (firstEdge) {
+        handleDisconnectEdge(firstEdge.id);
+      } else {
+        tourStateRef.current = 2;
+        setTourState(2);
+      }
+    } else if (tourStateRef.current === 2) {
+      handleSelectPreset('karakuri-chain');
+      setTimeout(() => {
+        handleSendMessage('msg-1');
+        tourStateRef.current = 'completed';
+        setTourState('completed');
+      }, 60);
+    }
+  }, [handleDisconnectEdge, handleSelectPreset, handleSendMessage]);
+
+  const currentStepData =
+    typeof tourState === 'number' ? t.openingAct.steps[tourState] : null;
+
   return (
-    <div className="app-shell">
+    <div className="app-shell" data-locale={locale}>
       <header className="top-bar">
         <div className="brand-title">
           <div className="hanko-seal" aria-hidden="true" title="からくり自働化・匠の印">
             巧
           </div>
           <div>
-            <h1>App LEGO からくり絵巻 — 和モダン工房</h1>
-            <p className="subtitle">
-              水引で言霊とからくりを結び、連鎖と舞を紡ぐローカル完結・型安全イベントパズル
-            </p>
+            <h1>{t.brandTitle}</h1>
+            <p className="subtitle">{t.brandSubtitle}</p>
           </div>
         </div>
 
         <div className="toolbar-actions" role="toolbar" aria-label="絵巻操作ツールバー">
+          <button
+            type="button"
+            className="toolbar-btn guide-open-btn"
+            data-testid="open-guide-btn"
+            onClick={() => {
+              setGuideInitialTab('slides');
+              setIsGuideOpen(true);
+            }}
+            aria-label={t.toolbar.guideAria}
+          >
+            {t.toolbar.guide}
+          </button>
+          <button
+            type="button"
+            className="toolbar-btn lang-toggle-btn"
+            data-testid="lang-toggle-btn"
+            onClick={() => setLocale((prev) => (prev === 'ja' ? 'en' : 'ja'))}
+            aria-label={t.toolbar.langSwitchAria}
+          >
+            {t.toolbar.langSwitch}
+          </button>
           <button
             type="button"
             className="toolbar-btn studio-toggle-btn"
@@ -624,7 +722,7 @@ export const App: React.FC = () => {
             aria-expanded={isStudioOpen}
             aria-label="からくり工房（カスタムブロック生成）を開く"
           >
-            🧪 からくり工房 {isStudioOpen ? '▲' : '▼'}
+            {t.toolbar.studio} {isStudioOpen ? '▲' : '▼'}
           </button>
           <button
             type="button"
@@ -633,7 +731,7 @@ export const App: React.FC = () => {
             onClick={handleShareUrl}
             aria-label="現在の絵巻をURLハッシュとして共有 (Share URL)"
           >
-            🔗 絵巻URL共有
+            {t.toolbar.share}
           </button>
           <button
             type="button"
@@ -643,7 +741,7 @@ export const App: React.FC = () => {
             onClick={handleUndo}
             aria-label="元に戻す (Undo)"
           >
-            ↩️ Undo (戻す) [{history.past.length}]
+            {t.toolbar.undoPrefix} [{history.past.length}]
           </button>
           <button
             type="button"
@@ -652,7 +750,7 @@ export const App: React.FC = () => {
             onClick={handleEmptyCanvas}
             aria-label="白紙の絵巻にする (Empty Canvas)"
           >
-            🧹 Empty (白紙)
+            {t.toolbar.empty}
           </button>
           <button
             type="button"
@@ -661,31 +759,130 @@ export const App: React.FC = () => {
             onClick={handleResetDemo}
             aria-label="デモを初期状態にリセット (Reset Demo)"
           >
-            🔄 Reset (初期化)
+            {t.toolbar.reset}
           </button>
         </div>
       </header>
 
       <nav className="preset-scroll-bar" aria-label="からくり絵巻プリセット選択">
-        <span className="preset-bar-label">📜 絵巻プリセット:</span>
+        <span className="preset-bar-label">{t.presetBarLabel}</span>
         <div className="preset-buttons-row">
-          {PRESET_RECIPES.map((preset) => (
-            <button
-              key={preset.id}
-              type="button"
-              className={`preset-scroll-btn ${
-                activePresetId === preset.id ? 'active' : ''
-              }`}
-              data-testid={`preset-btn-${preset.id}`}
-              onClick={() => handleSelectPreset(preset.id)}
-              title={preset.subtitleJa}
-            >
-              <strong>{preset.titleJa}</strong>
-              <small>{preset.subtitleJa}</small>
-            </button>
-          ))}
+          {PRESET_RECIPES.map((preset) => {
+            const localizedPreset =
+              t.presets[preset.id as keyof typeof t.presets] ?? {
+                title: preset.titleJa,
+                subtitle: preset.subtitleJa,
+              };
+            return (
+              <button
+                key={preset.id}
+                type="button"
+                className={`preset-scroll-btn ${
+                  activePresetId === preset.id ? 'active' : ''
+                }`}
+                data-testid={`preset-btn-${preset.id}`}
+                onClick={() => handleSelectPreset(preset.id)}
+                title={localizedPreset.subtitle}
+              >
+                <strong>{localizedPreset.title}</strong>
+                <small>{localizedPreset.subtitle}</small>
+              </button>
+            );
+          })}
         </div>
       </nav>
+
+      {/* Interactive Opening Act (体験型チュートリアル・序幕バー) */}
+      {tourState !== 'dismissed' && (
+        <section
+          className={`opening-act-banner ${
+            tourState === 'completed' ? 'is-completed' : ''
+          }`}
+          aria-label="初陣・体験ガイド (Opening Act)"
+          data-testid="opening-act-banner"
+          data-tour-step={String(tourState)}
+        >
+          {currentStepData ? (
+            <div className="opening-act-inner">
+              <div className="opening-act-left">
+                <span className="opening-act-badge">
+                  {currentStepData.stepBadge}
+                </span>
+                <div className="opening-act-copy">
+                  <strong>{currentStepData.title}</strong>
+                  <span>{currentStepData.instruction}</span>
+                </div>
+              </div>
+              <div className="opening-act-actions">
+                {currentStepData.actionButtonLabel && (
+                  <button
+                    type="button"
+                    className="opening-act-try-btn"
+                    data-testid="opening-act-try-btn"
+                    onClick={handleOpeningActQuickAction}
+                  >
+                    {currentStepData.actionButtonLabel}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="opening-act-slides-btn"
+                  onClick={() => {
+                    setGuideInitialTab('manual');
+                    setIsGuideOpen(true);
+                  }}
+                >
+                  {t.openingAct.openSlidesBtn}
+                </button>
+                <button
+                  type="button"
+                  className="opening-act-skip-btn"
+                  data-testid="opening-act-skip-btn"
+                  onClick={() => {
+                    tourStateRef.current = 'dismissed';
+                    setTourState('dismissed');
+                  }}
+                >
+                  ✕ {t.openingAct.skipBtn}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="opening-act-inner">
+              <div className="opening-act-left">
+                <span className="opening-act-badge completed">💮 皆伝</span>
+                <div className="opening-act-copy">
+                  <strong>{t.openingAct.completedBadge}</strong>
+                  <span>{t.openingAct.completedSub}</span>
+                </div>
+              </div>
+              <div className="opening-act-actions">
+                <button
+                  type="button"
+                  className="opening-act-slides-btn"
+                  onClick={() => {
+                    tourStateRef.current = 0;
+                    setTourState(0);
+                    handleResetDemo();
+                  }}
+                >
+                  {t.openingAct.restartBtn}
+                </button>
+                <button
+                  type="button"
+                  className="opening-act-skip-btn"
+                  onClick={() => {
+                    tourStateRef.current = 'dismissed';
+                    setTourState('dismissed');
+                  }}
+                >
+                  ✕ {t.openingAct.skipBtn}
+                </button>
+              </div>
+            </div>
+          )}
+        </section>
+      )}
 
       {isStudioOpen && (
         <section
@@ -695,14 +892,20 @@ export const App: React.FC = () => {
         >
           <form className="studio-form" onSubmit={handleCraftSummon}>
             <div className="studio-header">
-              <strong>🧪 からくり工房 (JIDOKA 認定カスタムブロック召喚)</strong>
+              <strong>
+                {locale === 'ja'
+                  ? '🧪 からくり工房 (JIDOKA 認定カスタムブロック召喚)'
+                  : '🧪 Karakuri Craft Studio (JIDOKA Verified Block Summoner)'}
+              </strong>
               <span>
-                外部AI通信ゼロ・ローカル型検査と無害化フィルタを通過した安全なブロックだけを召喚します。
+                {locale === 'ja'
+                  ? '外部AI通信ゼロ・ローカル型検査と無害化フィルタを通過した安全なブロックだけを召喚します。'
+                  : 'Zero external AI/API calls — summons only safe blocks validated by local JIDOKA rules.'}
               </span>
             </div>
             <div className="studio-controls">
               <label className="studio-field">
-                <span>型 (Type):</span>
+                <span>{locale === 'ja' ? '型 (Type):' : 'Type:'}</span>
                 <select
                   data-testid="craft-type-select"
                   value={craftType}
@@ -718,7 +921,7 @@ export const App: React.FC = () => {
               </label>
 
               <label className="studio-field">
-                <span>銘・セリフ (Label):</span>
+                <span>{locale === 'ja' ? '銘・セリフ (Label):' : 'Label:'}</span>
                 <input
                   type="text"
                   data-testid="craft-label-input"
@@ -731,7 +934,7 @@ export const App: React.FC = () => {
 
               {craftType === 'filter' && (
                 <label className="studio-field">
-                  <span>言霊調 (Style):</span>
+                  <span>{locale === 'ja' ? '言霊調 (Style):' : 'Style:'}</span>
                   <select
                     data-testid="craft-style-select"
                     value={craftFilterStyle}
@@ -748,7 +951,7 @@ export const App: React.FC = () => {
 
               {craftType === 'counter' && (
                 <label className="studio-field">
-                  <span>必要太鼓数:</span>
+                  <span>{locale === 'ja' ? '必要太鼓数:' : 'Hits:'}</span>
                   <input
                     type="number"
                     min={2}
@@ -761,7 +964,7 @@ export const App: React.FC = () => {
 
               {craftType === 'timer' && (
                 <label className="studio-field">
-                  <span>秒数 (1-5s):</span>
+                  <span>{locale === 'ja' ? '秒数 (1-5s):' : 'Sec (1-5s):'}</span>
                   <input
                     type="number"
                     min={1}
@@ -777,7 +980,7 @@ export const App: React.FC = () => {
                 className="studio-summon-btn"
                 data-testid="craft-summon-btn"
               >
-                💮 JIDOKA 検査して召喚
+                💮 {locale === 'ja' ? 'JIDOKA 検査して召喚' : 'JIDOKA Check & Summon'}
               </button>
             </div>
             {lastCraftReceipt && (
@@ -805,7 +1008,7 @@ export const App: React.FC = () => {
             className="warning-dismiss-btn"
             onClick={() => setShareToast(null)}
           >
-            閉じる
+            {locale === 'ja' ? '閉じる' : 'Close'}
           </button>
         </div>
       )}
@@ -825,17 +1028,15 @@ export const App: React.FC = () => {
             aria-label="警告を閉じる"
             onClick={() => setWarningBanner(null)}
           >
-            閉じる
+            {locale === 'ja' ? '閉じる' : 'Close'}
           </button>
         </div>
       )}
 
       <main className="workspace-grid">
         <aside className="toybox-panel" aria-label="からくり道具箱 (Block Palette)">
-          <h2 className="panel-heading">🧰 からくり道具箱 (Toybox)</h2>
-          <p className="panel-help">
-            クリックで絵巻へ配置。右側の出力ポートから左側の入力ポートへ水引を結んで連鎖させましょう。
-          </p>
+          <h2 className="panel-heading">{t.toybox.title}</h2>
+          <p className="panel-help">{t.toybox.hint}</p>
           <div className="palette-list">
             <button
               type="button"
@@ -845,8 +1046,16 @@ export const App: React.FC = () => {
             >
               <span className="palette-icon" aria-hidden="true">📜</span>
               <span className="palette-text">
-                <strong>+ Message (文・言霊)</strong>
-                <small>出力: sent (trigger)</small>
+                <strong>
+                  {locale === 'ja'
+                    ? '+ Message (文・言霊)'
+                    : '+ Message (Scroll Text)'}
+                </strong>
+                <small>
+                  {locale === 'ja'
+                    ? '出力: sent (trigger)'
+                    : 'Out: sent (trigger)'}
+                </small>
               </span>
             </button>
 
@@ -858,8 +1067,16 @@ export const App: React.FC = () => {
             >
               <span className="palette-icon" aria-hidden="true">🎎</span>
               <span className="palette-text">
-                <strong>+ Character (からくり人形)</strong>
-                <small>入: jump / 出: landed (着地連鎖)</small>
+                <strong>
+                  {locale === 'ja'
+                    ? '+ Character (からくり人形)'
+                    : '+ Character (Karakuri Puppet)'}
+                </strong>
+                <small>
+                  {locale === 'ja'
+                    ? '入: jump / 出: landed (着地連鎖)'
+                    : 'In: jump / Out: landed'}
+                </small>
               </span>
             </button>
 
@@ -871,8 +1088,16 @@ export const App: React.FC = () => {
             >
               <span className="palette-icon" aria-hidden="true">🕰️</span>
               <span className="palette-text">
-                <strong>+ Timer (砂時計・3秒)</strong>
-                <small>入: start / 出: elapsed</small>
+                <strong>
+                  {locale === 'ja'
+                    ? '+ Timer (砂時計・3秒)'
+                    : '+ Timer (3s Hourglass)'}
+                </strong>
+                <small>
+                  {locale === 'ja'
+                    ? '入: start / 出: elapsed'
+                    : 'In: start / Out: elapsed'}
+                </small>
               </span>
             </button>
 
@@ -884,8 +1109,16 @@ export const App: React.FC = () => {
             >
               <span className="palette-icon" aria-hidden="true">🏮</span>
               <span className="palette-text">
-                <strong>+ Media Card (絵巻舞台)</strong>
-                <small>入力: play (演舞切替)</small>
+                <strong>
+                  {locale === 'ja'
+                    ? '+ Media Card (絵巻舞台)'
+                    : '+ Media Card (Lantern Stage)'}
+                </strong>
+                <small>
+                  {locale === 'ja'
+                    ? '入力: play (演舞切替)'
+                    : 'In: play (Toggle Stage)'}
+                </small>
               </span>
             </button>
 
@@ -897,8 +1130,16 @@ export const App: React.FC = () => {
             >
               <span className="palette-icon" aria-hidden="true">⛩️</span>
               <span className="palette-text">
-                <strong>+ Filter (言霊変換)</strong>
-                <small>入: in → 出: out (雅/武士/祭)</small>
+                <strong>
+                  {locale === 'ja'
+                    ? '+ Filter (言霊変換)'
+                    : '+ Filter (Kotodama Style)'}
+                </strong>
+                <small>
+                  {locale === 'ja'
+                    ? '入: in → 出: out (雅/武士/祭)'
+                    : 'In: in → Out: out (Poetic/Samurai)'}
+                </small>
               </span>
             </button>
 
@@ -910,14 +1151,22 @@ export const App: React.FC = () => {
             >
               <span className="palette-icon" aria-hidden="true">🥁</span>
               <span className="palette-text">
-                <strong>+ Counter (三連大太鼓)</strong>
-                <small>入: hit (3打) → 出: combo</small>
+                <strong>
+                  {locale === 'ja'
+                    ? '+ Counter (三連大太鼓)'
+                    : '+ Counter (3-Hit Taiko Drum)'}
+                </strong>
+                <small>
+                  {locale === 'ja'
+                    ? '入: hit (3打) → 出: combo'
+                    : 'In: hit (3x) → Out: combo'}
+                </small>
               </span>
             </button>
           </div>
 
           <section className="event-log-section" aria-label="からくり過去帳 (Event Log)">
-            <h2 className="panel-heading">📖 からくり過去帳 (Event Log)</h2>
+            <h2 className="panel-heading">{t.toybox.eventLogTitle}</h2>
             <ul className="event-log-list" data-testid="event-log-list">
               {eventLog.map((item) => (
                 <li
@@ -951,6 +1200,22 @@ export const App: React.FC = () => {
           onMoveNode={handleMoveNode}
         />
       </main>
+
+      <GuideModal
+        isOpen={isGuideOpen}
+        locale={locale}
+        initialTab={guideInitialTab}
+        onClose={() => setIsGuideOpen(false)}
+        onStartOpeningAct={() => {
+          tourStateRef.current = 0;
+          setTourState(0);
+          handleResetDemo();
+        }}
+        onLoadPresetAndClose={(presetId) => {
+          handleSelectPreset(presetId);
+          setIsGuideOpen(false);
+        }}
+      />
     </div>
   );
 };

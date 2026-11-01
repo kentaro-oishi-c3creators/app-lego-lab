@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-11-01T01:23:24.823Z",
+  "timestamp": "2026-11-01T02:01:01.731Z",
   "consoleErrors": [],
   "pageExceptions": [],
   "layoutCheck": {
@@ -11,50 +11,50 @@
     "controls": [
       {
         "id": "undo-btn",
-        "left": 864,
-        "top": 18,
-        "right": 994,
-        "bottom": 50,
+        "left": 517,
+        "top": 69,
+        "right": 647,
+        "bottom": 101,
         "width": 130,
         "height": 32,
         "clipped": false
       },
       {
         "id": "empty-canvas-btn",
-        "left": 1000,
-        "top": 18,
-        "right": 1117,
-        "bottom": 50,
+        "left": 653,
+        "top": 69,
+        "right": 771,
+        "bottom": 101,
         "width": 117,
         "height": 32,
         "clipped": false
       },
       {
         "id": "reset-demo-btn",
-        "left": 1123,
-        "top": 18,
-        "right": 1249,
-        "bottom": 50,
+        "left": 777,
+        "top": 69,
+        "right": 902,
+        "bottom": 101,
         "width": 126,
         "height": 32,
         "clipped": false
       },
       {
         "id": "share-url-btn",
-        "left": 740,
-        "top": 18,
-        "right": 858,
-        "bottom": 50,
+        "left": 393,
+        "top": 69,
+        "right": 511,
+        "bottom": 101,
         "width": 118,
         "height": 32,
         "clipped": false
       },
       {
         "id": "toggle-studio-btn",
-        "left": 600,
-        "top": 18,
-        "right": 734,
-        "bottom": 50,
+        "left": 254,
+        "top": 69,
+        "right": 387,
+        "bottom": 101,
         "width": 133,
         "height": 32,
         "clipped": false
@@ -62,9 +62,9 @@
       {
         "id": "preset-btn-poc0-basic",
         "left": 138,
-        "top": 76,
+        "top": 118,
         "right": 346,
-        "bottom": 114,
+        "bottom": 156,
         "width": 208,
         "height": 38,
         "clipped": false
@@ -72,9 +72,9 @@
       {
         "id": "preset-btn-karakuri-chain",
         "left": 354,
-        "top": 76,
+        "top": 118,
         "right": 548,
-        "bottom": 114,
+        "bottom": 156,
         "width": 193,
         "height": 38,
         "clipped": false
@@ -82,9 +82,9 @@
       {
         "id": "preset-btn-taiko-combo",
         "left": 556,
-        "top": 76,
+        "top": 118,
         "right": 742,
-        "bottom": 114,
+        "bottom": 156,
         "width": 186,
         "height": 38,
         "clipped": false
@@ -92,9 +92,9 @@
       {
         "id": "preset-btn-senbonzakura",
         "left": 750,
-        "top": 76,
+        "top": 118,
         "right": 942,
-        "bottom": 114,
+        "bottom": 156,
         "width": 192,
         "height": 38,
         "clipped": false
@@ -102,9 +102,9 @@
       {
         "id": "add-message-btn",
         "left": 12,
-        "top": 226,
+        "top": 342,
         "right": 266,
-        "bottom": 274,
+        "bottom": 390,
         "width": 254,
         "height": 48,
         "clipped": false
@@ -112,9 +112,9 @@
       {
         "id": "add-filter-btn",
         "left": 12,
-        "top": 442,
+        "top": 558,
         "right": 266,
-        "bottom": 490,
+        "bottom": 606,
         "width": 254,
         "height": 48,
         "clipped": false
@@ -122,9 +122,9 @@
       {
         "id": "add-counter-btn",
         "left": 12,
-        "top": 496,
+        "top": 612,
         "right": 266,
-        "bottom": 544,
+        "bottom": 660,
         "width": 254,
         "height": 48,
         "clipped": false
@@ -132,9 +132,9 @@
       {
         "id": "add-character-btn",
         "left": 12,
-        "top": 280,
+        "top": 396,
         "right": 266,
-        "bottom": 328,
+        "bottom": 444,
         "width": 254,
         "height": 48,
         "clipped": false
@@ -142,9 +142,9 @@
       {
         "id": "add-timer-btn",
         "left": 12,
-        "top": 334,
+        "top": 450,
         "right": 266,
-        "bottom": 382,
+        "bottom": 498,
         "width": 254,
         "height": 48,
         "clipped": false
@@ -152,9 +152,9 @@
       {
         "id": "add-media-btn",
         "left": 12,
-        "top": 388,
+        "top": 504,
         "right": 266,
-        "bottom": 436,
+        "bottom": 552,
         "width": 254,
         "height": 48,
         "clipped": false
@@ -162,9 +162,9 @@
       {
         "id": "send-btn-msg-1",
         "left": 372,
-        "top": 305,
+        "top": 421,
         "right": 596,
-        "bottom": 338,
+        "bottom": 454,
         "width": 224,
         "height": 33,
         "clipped": false
@@ -172,9 +172,9 @@
       {
         "id": "start-timer-btn-timer-1",
         "left": 372,
-        "top": 580,
+        "top": 696,
         "right": 596,
-        "bottom": 612,
+        "bottom": 728,
         "width": 224,
         "height": 32,
         "clipped": false
@@ -182,9 +182,9 @@
       {
         "id": "block-node-msg-1",
         "left": 360,
-        "top": 166,
+        "top": 282,
         "right": 608,
-        "bottom": 348,
+        "bottom": 464,
         "width": 248,
         "height": 182,
         "clipped": false
@@ -192,9 +192,9 @@
       {
         "id": "block-node-char-1",
         "left": 690,
-        "top": 166,
+        "top": 282,
         "right": 938,
-        "bottom": 397,
+        "bottom": 513,
         "width": 248,
         "height": 231,
         "clipped": false
@@ -202,9 +202,9 @@
       {
         "id": "block-node-timer-1",
         "left": 360,
-        "top": 436,
+        "top": 552,
         "right": 608,
-        "bottom": 622,
+        "bottom": 738,
         "width": 248,
         "height": 186,
         "clipped": false
@@ -212,9 +212,9 @@
       {
         "id": "block-node-media-1",
         "left": 690,
-        "top": 436,
+        "top": 552,
         "right": 938,
-        "bottom": 663,
+        "bottom": 779,
         "width": 248,
         "height": 227,
         "clipped": false
@@ -233,7 +233,7 @@
     "warningText": "⚠️ [SELF_LOOP] 同じブロック自身には接続できません (Self-loop is not allowed).閉じる"
   },
   "karakuriChainResult": {
-    "charJumpCount": "2",
+    "charJumpCount": "1",
     "speechText": "🌸 花鳥風月〜 いざ開演！ かな ✨",
     "mediaPlaying": "true",
     "mediaPlayCount": null

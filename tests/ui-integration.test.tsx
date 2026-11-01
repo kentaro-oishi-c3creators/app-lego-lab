@@ -216,4 +216,41 @@ describe('App LEGO UI Integration — Gates G04 & G05 + PoC 1 All-in-One', () =>
     fireEvent.click(screen.getByTestId('share-url-btn'));
     expect(screen.getByTestId('share-toast-banner').textContent).toContain('#emaki=');
   });
+
+  it('UX Upgrade: Opening Act interactive 3-step tour, Guide & Concept Slides Modal, and English/Japanese language switch', () => {
+    render(<App />);
+
+    // 1. Opening Act starts at step 0 (壱ノ型)
+    const banner = screen.getByTestId('opening-act-banner');
+    expect(banner.getAttribute('data-tour-step')).toBe('0');
+
+    // Clicking Send advances Opening Act to step 1 (弐ノ型)
+    fireEvent.click(screen.getByTestId('send-btn-msg-1'));
+    expect(banner.getAttribute('data-tour-step')).toBe('1');
+
+    // Disconnecting edge-1 advances Opening Act to step 2 (参ノ型)
+    fireEvent.click(screen.getByTestId('chip-disconnect-edge-1'));
+    expect(banner.getAttribute('data-tour-step')).toBe('2');
+
+    // 2. Switch language to English -> UI updates to English
+    fireEvent.click(screen.getByTestId('lang-toggle-btn'));
+    expect(banner.textContent).toContain('Act 3 of 3');
+
+    // 3. Open Guide & Concept Slides Modal -> navigate slides and tabs
+    fireEvent.click(screen.getByTestId('open-guide-btn'));
+    expect(screen.getByTestId('guide-modal')).toBeInTheDocument();
+    expect(screen.getByTestId('slide-deck-view')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('slide-next-btn'));
+    expect(screen.getByTestId('slide-deck-view').textContent).toContain('Slide 2 / 4');
+
+    fireEvent.click(screen.getByTestId('guide-tab-manual'));
+    expect(screen.getByTestId('manual-view')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('guide-tab-architecture'));
+    expect(screen.getByTestId('architecture-view')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('close-guide-modal-btn'));
+    expect(screen.queryByTestId('guide-modal')).toBeNull();
+  });
 });
