@@ -6,8 +6,8 @@
       "id": "msg-1",
       "type": "message",
       "position": {
-        "x": 80,
-        "y": 45
+        "x": 60,
+        "y": 8
       },
       "data": {
         "label": "Hello!"
@@ -17,8 +17,8 @@
       "id": "char-1",
       "type": "character",
       "position": {
-        "x": 410,
-        "y": 45
+        "x": 390,
+        "y": 8
       },
       "data": {
         "label": "Happy bot"
@@ -28,8 +28,8 @@
       "id": "timer-1",
       "type": "timer",
       "position": {
-        "x": 80,
-        "y": 315
+        "x": 60,
+        "y": 176
       },
       "data": {
         "label": "3 second timer",
@@ -40,8 +40,8 @@
       "id": "media-1",
       "type": "media-card",
       "position": {
-        "x": 410,
-        "y": 315
+        "x": 390,
+        "y": 176
       },
       "data": {
         "label": "Rainbow preview"
