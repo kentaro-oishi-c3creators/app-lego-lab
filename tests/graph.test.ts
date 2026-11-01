@@ -6,9 +6,18 @@ import {
   removeEdge,
   removeNode,
   sanitizeGraph,
+  transformKotodama,
   validateConnection,
 } from '../src/domain/graph';
-import { createEmptyGraph, createSampleGraph } from '../src/domain/sampleGraph';
+import {
+  createEmptyGraph,
+  createKarakuriChainGraph,
+  createSampleGraph,
+  createSenbonzakuraGraph,
+  createTaikoComboGraph,
+  decodeGraphFromHash,
+  encodeGraphToHash,
+} from '../src/domain/sampleGraph';
 import { GraphState } from '../src/domain/types';
 
 describe('Graph Engine — Connection Validation & Immutability (Gate G02)', () => {
@@ -229,5 +238,37 @@ describe('Graph Engine — Connection Validation & Immutability (Gate G02)', () 
     expect(clean.nodes).toHaveLength(1);
     expect(clean.nodes[0].data).toEqual({ label: 'Safe' });
     expect('script' in (clean.nodes[0].data as Record<string, unknown>)).toBe(false);
+  });
+
+  it('transforms Kotodama phrases deterministically across miyabi, bushido, and kansai styles', () => {
+    expect(transformKotodama('こんにちは', 'miyabi')).toContain('花鳥風月');
+    expect(transformKotodama('こんにちは', 'bushido')).toContain('でござる');
+    expect(transformKotodama('こんにちは', 'kansai')).toContain('知らんけど');
+  });
+
+  it('validates all PoC 1 presets and round-trips URL hash encoding safely', () => {
+    const chain = createKarakuriChainGraph();
+    expect(chain.nodes).toHaveLength(5);
+    expect(chain.edges).toHaveLength(4);
+
+    const taiko = createTaikoComboGraph();
+    expect(taiko.nodes).toHaveLength(4);
+    expect(taiko.edges).toHaveLength(3);
+
+    const sakura = createSenbonzakuraGraph();
+    expect(sakura.nodes).toHaveLength(5);
+    expect(sakura.edges).toHaveLength(4);
+
+    const hash = encodeGraphToHash(chain);
+    expect(hash.startsWith('#emaki=')).toBe(true);
+
+    const decoded = decodeGraphFromHash(hash);
+    expect(decoded).not.toBeNull();
+    expect(decoded?.name).toBe(chain.name);
+    expect(decoded?.nodes).toHaveLength(5);
+    expect(decoded?.edges).toHaveLength(4);
+
+    expect(decodeGraphFromHash('#invalid=123')).toBeNull();
+    expect(decodeGraphFromHash('#emaki=!!!not-base64!!!')).toBeNull();
   });
 });

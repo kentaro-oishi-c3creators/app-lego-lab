@@ -1,13 +1,21 @@
-export type BlockType = 'message' | 'character' | 'timer' | 'media-card';
+export type BlockType =
+  | 'message'
+  | 'character'
+  | 'timer'
+  | 'media-card'
+  | 'filter'
+  | 'counter';
 
 /**
- * In PoC 0, only 'trigger' is active for connections.
- * 'notification' is reserved as a future port type so incompatible/unsupported
- * port connections can be deterministically rejected and tested.
+ * In PoC 0/1, only 'trigger' is active for connections.
+ * 'notification' is reserved as an unsupported port type so incompatible/unsupported
+ * port connections can be deterministically rejected and tested (Gate G02).
  */
 export type PortType = 'trigger' | 'notification';
 
 export type PortDirection = 'input' | 'output';
+
+export type FilterStyle = 'bushido' | 'miyabi' | 'kansai';
 
 export interface PortDefinition {
   id: string;
@@ -24,6 +32,8 @@ export interface PortDefinition {
 export interface BlockNodeData {
   label?: string;
   durationSeconds?: number;
+  filterStyle?: FilterStyle;
+  targetCount?: number;
 }
 
 export interface Position {
@@ -72,6 +82,11 @@ export interface ValidationResult {
   message?: string;
 }
 
+export interface EventPayload {
+  text?: string;
+  style?: FilterStyle | 'normal';
+}
+
 export interface RuntimeEvent {
   eventId: string;
   sourceNodeId: string;
@@ -79,6 +94,7 @@ export interface RuntimeEvent {
   type: 'trigger';
   createdAt: number;
   traceId: string;
+  payload?: EventPayload;
 }
 
 export interface EventDelivery {

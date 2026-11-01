@@ -2,8 +2,10 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../src/app/App';
 
-describe('App LEGO UI Integration — Gates G04 & G05', () => {
+describe('App LEGO UI Integration — Gates G04 & G05 + PoC 1 All-in-One', () => {
   beforeEach(() => {
+    window.history.replaceState(null, '', '/');
+    window.localStorage.setItem('app_lego_guide_seen_v1', 'true');
     vi.useFakeTimers();
   });
 
@@ -132,11 +134,6 @@ describe('App LEGO UI Integration — Gates G04 & G05', () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     render(<App />);
 
-    // Perform rapid synchronous native .click() calls inside one act() block:
-    // 1) Send while connected (jumpCount -> 1)
-    // 2) Disconnect edge-1
-    // 3) Send again in the SAME synchronous tick (must see disconnected state via historyRef and stay 1)
-    // 4) Click port-msg-1-sent twice in the SAME synchronous tick (must trigger SELF_LOOP via pendingPortRef)
     act(() => {
       (screen.getByTestId('send-btn-msg-1') as HTMLButtonElement).click();
       (screen.getByTestId('chip-disconnect-edge-1') as HTMLButtonElement).click();
@@ -151,5 +148,123 @@ describe('App LEGO UI Integration — Gates G04 & G05', () => {
     expect(screen.getByTestId('warning-banner').textContent).toContain('SELF_LOOP');
     expect(errorSpy).not.toHaveBeenCalled();
     errorSpy.mockRestore();
+  });
+
+  it('PoC 1 Karakuri 5-Stage Chain: Message -> Filter -> Character -> Timer -> MediaCard', () => {
+    render(<App />);
+
+    // Load Preset 2: 弐ノ巻：からくり五段連鎖
+    fireEvent.click(screen.getByTestId('preset-btn-karakuri-chain'));
+
+    const charBody = screen.getByTestId('character-body-char-1');
+    const timerBody = screen.getByTestId('timer-body-timer-1');
+    const mediaBody = screen.getByTestId('media-body-media-1');
+
+    expect(charBody.getAttribute('data-jump-count')).toBe('0');
+    expect(mediaBody.getAttribute('data-playing')).toBe('false');
+
+    // Click Send on msg-1 -> Filter transforms text -> Character jumps with speech bubble -> Timer starts automatically!
+    fireEvent.click(screen.getByTestId('send-btn-msg-1'));
+
+    expect(charBody.getAttribute('data-jump-count')).toBe('1');
+    expect(screen.getByTestId('character-speech-char-1').textContent).toContain(
+      '花鳥風月'
+    );
+    expect(timerBody.getAttribute('data-running')).toBe('true');
+
+    // Advance 2100ms for the 2-second hourglass timer -> MediaCard plays!
+    act(() => {
+      vi.advanceTimersByTime(2100);
+    });
+    expect(mediaBody.getAttribute('data-playing')).toBe('true');
+    expect(mediaBody.getAttribute('data-toggle-count')).toBe('1');
+  });
+
+  it('PoC 1 Taiko 3-Hit Combo & Karakuri Studio Summon + URL Share', () => {
+    render(<App />);
+
+    // Load Preset 3: 参ノ巻：三連太鼓の奥義
+    fireEvent.click(screen.getByTestId('preset-btn-taiko-combo'));
+
+    const counterBody = screen.getByTestId('counter-body-counter-1');
+    const charBody = screen.getByTestId('character-body-char-1');
+    const mediaBody = screen.getByTestId('media-body-media-1');
+
+    // Hit 1 & Hit 2: accumulates drum hits without firing combo yet
+    fireEvent.click(screen.getByTestId('send-btn-msg-1'));
+    expect(counterBody.getAttribute('data-current-count')).toBe('1');
+    expect(charBody.getAttribute('data-jump-count')).toBe('0');
+
+    fireEvent.click(screen.getByTestId('send-btn-msg-1'));
+    expect(counterBody.getAttribute('data-current-count')).toBe('2');
+    expect(charBody.getAttribute('data-jump-count')).toBe('0');
+
+    // Hit 3: reaches targetCount=3 -> fires combo -> both Character and Media Card react!
+    fireEvent.click(screen.getByTestId('send-btn-msg-1'));
+    expect(counterBody.getAttribute('data-combo-count')).toBe('1');
+    expect(charBody.getAttribute('data-jump-count')).toBe('1');
+    expect(mediaBody.getAttribute('data-playing')).toBe('true');
+
+    // Open Karakuri Studio and summon a custom block with JIDOKA receipt
+    fireEvent.click(screen.getByTestId('toggle-studio-btn'));
+    expect(screen.getByTestId('karakuri-studio-drawer')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('craft-summon-btn'));
+    expect(screen.getByTestId('craft-receipt').textContent).toContain(
+      'JIDOKA 検査 PASS'
+    );
+
+    // Click Share URL button -> generates #emaki=... hash and toast
+    fireEvent.click(screen.getByTestId('share-url-btn'));
+    expect(screen.getByTestId('share-toast-banner').textContent).toContain('#emaki=');
+  });
+
+  it('UX Upgrade: First-visit auto-opens Guide Modal, second visit stays closed until clicked, plus Opening Act & English switch', () => {
+    // Simulate a brand-new 1st visit (no localStorage flag)
+    window.localStorage.removeItem('app_lego_guide_seen_v1');
+    const { unmount } = render(<App />);
+
+    // 1. Guide & Concept Slides Modal auto-opens on 1st visit!
+    expect(screen.getByTestId('guide-modal')).toBeInTheDocument();
+    expect(screen.getByTestId('slide-deck-view')).toBeInTheDocument();
+
+    // Navigate slides and tabs inside the first-visit modal
+    fireEvent.click(screen.getByTestId('slide-next-btn'));
+    expect(screen.getByTestId('slide-deck-view').textContent).toContain('Slide 2 / 4');
+
+    fireEvent.click(screen.getByTestId('guide-tab-manual'));
+    expect(screen.getByTestId('manual-view')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('guide-tab-architecture'));
+    expect(screen.getByTestId('architecture-view')).toBeInTheDocument();
+
+    // Close modal -> marks 'app_lego_guide_seen_v1' = 'true'
+    fireEvent.click(screen.getByTestId('close-guide-modal-btn'));
+    expect(screen.queryByTestId('guide-modal')).toBeNull();
+    expect(window.localStorage.getItem('app_lego_guide_seen_v1')).toBe('true');
+
+    // Unmount and mount again (simulate 2nd visit) -> Guide Modal must NOT auto-open!
+    unmount();
+    render(<App />);
+    expect(screen.queryByTestId('guide-modal')).toBeNull();
+
+    // User can open Guide Modal on demand anytime
+    fireEvent.click(screen.getByTestId('open-guide-btn'));
+    expect(screen.getByTestId('guide-modal')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('guide-start-playing-btn'));
+    expect(screen.queryByTestId('guide-modal')).toBeNull();
+
+    // 2. Opening Act starts at step 0 (壱ノ型) -> advances on Send and Disconnect
+    const banner = screen.getByTestId('opening-act-banner');
+    expect(banner.getAttribute('data-tour-step')).toBe('0');
+
+    fireEvent.click(screen.getByTestId('send-btn-msg-1'));
+    expect(banner.getAttribute('data-tour-step')).toBe('1');
+
+    fireEvent.click(screen.getByTestId('chip-disconnect-edge-1'));
+    expect(banner.getAttribute('data-tour-step')).toBe('2');
+
+    // 3. Switch language to English -> UI updates to English
+    fireEvent.click(screen.getByTestId('lang-toggle-btn'));
+    expect(banner.textContent).toContain('Act 3 of 3');
   });
 });

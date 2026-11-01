@@ -30,12 +30,12 @@ export const MediaCardBlock: React.FC<MediaCardBlockProps> = ({ node, runtime })
         aria-label={`${label} のモック再生状態: ${isPlaying ? '再生中' : '停止中'}`}
       >
         <div className="media-visual" aria-hidden="true">
-          {isPlaying ? '🌈🎶' : '🖼️⏸️'}
+          {isPlaying ? '🏮🌸🎶' : '🖼️⏸️'}
         </div>
         <div className="media-info">
           <strong>{label}</strong>
           <span className="status-pill" data-testid={`media-status-${node.id}`}>
-            {isPlaying ? 'PLAYING (モック再生中)' : 'PAUSED (待機中)'}
+            {isPlaying ? 'PLAYING (雅楽演舞中)' : 'PAUSED (待機中)'}
           </span>
         </div>
         <div className="media-progress-track" aria-hidden="true">
