@@ -1,14 +1,18 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { BlockNode } from '../../domain/types';
 
 export interface TimerBlockProps {
   node: BlockNode;
+  startSignal?: number;
   onElapsed: (nodeId: string) => void;
-  onCancelLog?: (nodeId: string) => void;
 }
 
-export const TimerBlock: React.FC<TimerBlockProps> = ({ node, onElapsed }) => {
-  const durationSeconds = Math.max(1, Math.min(3, node.data.durationSeconds ?? 3));
+export const TimerBlock: React.FC<TimerBlockProps> = ({
+  node,
+  startSignal = 0,
+  onElapsed,
+}) => {
+  const durationSeconds = Math.max(1, Math.min(5, node.data.durationSeconds ?? 3));
   const [isRunning, setIsRunning] = useState(false);
   const [remainingMs, setRemainingMs] = useState(durationSeconds * 1000);
   const [completedCount, setCompletedCount] = useState(0);
@@ -16,11 +20,12 @@ export const TimerBlock: React.FC<TimerBlockProps> = ({ node, onElapsed }) => {
   const onElapsedRef = useRef(onElapsed);
   onElapsedRef.current = onElapsed;
 
+  const isRunningRef = useRef(false);
   const timerIdRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const intervalIdRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const hasFiredRef = useRef<boolean>(false);
 
-  const clearTimers = () => {
+  const clearTimers = useCallback(() => {
     if (timerIdRef.current !== null) {
       clearTimeout(timerIdRef.current);
       timerIdRef.current = null;
@@ -29,20 +34,22 @@ export const TimerBlock: React.FC<TimerBlockProps> = ({ node, onElapsed }) => {
       clearInterval(intervalIdRef.current);
       intervalIdRef.current = null;
     }
-  };
+    isRunningRef.current = false;
+  }, []);
 
   // Clean up on unmount / block deletion so deleted timers never fire (Gate G05)
   useEffect(() => {
     return () => {
       clearTimers();
     };
-  }, []);
+  }, [clearTimers]);
 
-  const handleStart = () => {
-    if (isRunning) {
+  const handleStart = useCallback(() => {
+    if (isRunningRef.current) {
       return;
     }
     clearTimers();
+    isRunningRef.current = true;
     hasFiredRef.current = false;
     const totalMs = durationSeconds * 1000;
     setIsRunning(true);
@@ -65,7 +72,16 @@ export const TimerBlock: React.FC<TimerBlockProps> = ({ node, onElapsed }) => {
         onElapsedRef.current(node.id);
       }
     }, totalMs);
-  };
+  }, [clearTimers, durationSeconds, node.id]);
+
+  // Support chain-triggered start via startSignal prop (e.g. Character.landed -> Timer.start)
+  const prevSignalRef = useRef(startSignal);
+  useEffect(() => {
+    if (startSignal > prevSignalRef.current) {
+      prevSignalRef.current = startSignal;
+      handleStart();
+    }
+  }, [handleStart, startSignal]);
 
   const secondsDisplay = isRunning
     ? `${(remainingMs / 1000).toFixed(1)}s`
@@ -80,7 +96,7 @@ export const TimerBlock: React.FC<TimerBlockProps> = ({ node, onElapsed }) => {
     >
       <div className="timer-display" role="status" aria-live="polite">
         <span className="timer-icon" aria-hidden="true">
-          {isRunning ? '⏳' : '⏱️'}
+          {isRunning ? '⏳' : '🕰️'}
         </span>
         <span className="timer-countdown" data-testid={`timer-countdown-${node.id}`}>
           {secondsDisplay}
@@ -98,7 +114,7 @@ export const TimerBlock: React.FC<TimerBlockProps> = ({ node, onElapsed }) => {
           aria-label={`${durationSeconds}秒タイマーを開始 (Start Timer)`}
           onClick={handleStart}
         >
-          {isRunning ? '⏳ Running...' : `▶️ Start Timer (${durationSeconds}s)`}
+          {isRunning ? '⏳ 刻計測中...' : `▶️ Start Timer (${durationSeconds}s)`}
         </button>
       </div>
     </div>

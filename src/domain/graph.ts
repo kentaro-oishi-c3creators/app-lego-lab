@@ -4,6 +4,7 @@ import {
   BlockNodeData,
   BlockType,
   EdgeEndpoint,
+  FilterStyle,
   GraphState,
   PortDefinition,
   Position,
@@ -15,13 +16,21 @@ const ALLOWED_BLOCK_TYPES: ReadonlySet<BlockType> = new Set<BlockType>([
   'character',
   'timer',
   'media-card',
+  'filter',
+  'counter',
+]);
+
+const ALLOWED_FILTER_STYLES: ReadonlySet<FilterStyle> = new Set<FilterStyle>([
+  'bushido',
+  'miyabi',
+  'kansai',
 ]);
 
 export const BLOCK_PORTS: Readonly<Record<BlockType, readonly PortDefinition[]>> = {
   message: [
     {
       id: 'sent',
-      label: 'sent (送信)',
+      label: 'sent (文送信)',
       direction: 'output',
       portType: 'trigger',
       supportedInPoc0: true,
@@ -30,8 +39,15 @@ export const BLOCK_PORTS: Readonly<Record<BlockType, readonly PortDefinition[]>>
   character: [
     {
       id: 'jump',
-      label: 'jump (ジャンプ)',
+      label: 'jump (舞・跳躍)',
       direction: 'input',
+      portType: 'trigger',
+      supportedInPoc0: true,
+    },
+    {
+      id: 'landed',
+      label: 'landed (着地連鎖)',
+      direction: 'output',
       portType: 'trigger',
       supportedInPoc0: true,
     },
@@ -45,8 +61,15 @@ export const BLOCK_PORTS: Readonly<Record<BlockType, readonly PortDefinition[]>>
   ],
   timer: [
     {
+      id: 'start',
+      label: 'start (刻開始)',
+      direction: 'input',
+      portType: 'trigger',
+      supportedInPoc0: true,
+    },
+    {
       id: 'elapsed',
-      label: 'elapsed (カウント完了)',
+      label: 'elapsed (刻満了)',
       direction: 'output',
       portType: 'trigger',
       supportedInPoc0: true,
@@ -55,8 +78,40 @@ export const BLOCK_PORTS: Readonly<Record<BlockType, readonly PortDefinition[]>>
   'media-card': [
     {
       id: 'play',
-      label: 'play (再生トグル)',
+      label: 'play (演舞切替)',
       direction: 'input',
+      portType: 'trigger',
+      supportedInPoc0: true,
+    },
+  ],
+  filter: [
+    {
+      id: 'in',
+      label: 'in (言霊受)',
+      direction: 'input',
+      portType: 'trigger',
+      supportedInPoc0: true,
+    },
+    {
+      id: 'out',
+      label: 'out (言霊送)',
+      direction: 'output',
+      portType: 'trigger',
+      supportedInPoc0: true,
+    },
+  ],
+  counter: [
+    {
+      id: 'hit',
+      label: 'hit (太鼓打)',
+      direction: 'input',
+      portType: 'trigger',
+      supportedInPoc0: true,
+    },
+    {
+      id: 'combo',
+      label: 'combo (満願発動)',
+      direction: 'output',
       portType: 'trigger',
       supportedInPoc0: true,
     },
@@ -182,7 +237,7 @@ export function validateConnection(
     return {
       valid: false,
       code: 'UNSUPPORTED_PORT_TYPE',
-      message: `ポート「${!sourcePort.supportedInPoc0 ? sourcePort.id : targetPort.id}」(${!sourcePort.supportedInPoc0 ? sourcePort.portType : targetPort.portType}) はPoC 0では予約済み・未対応です (Unsupported event type).`,
+      message: `ポート「${!sourcePort.supportedInPoc0 ? sourcePort.id : targetPort.id}」(${!sourcePort.supportedInPoc0 ? sourcePort.portType : targetPort.portType}) は予約済み・未対応です (Unsupported event type).`,
     };
   }
 
@@ -240,14 +295,27 @@ export function removeEdge(graph: GraphState, edgeId: string): GraphState {
   };
 }
 
-export function sanitizeNodeData(type: BlockType, data: BlockNodeData | undefined): BlockNodeData {
+export function sanitizeNodeData(
+  type: BlockType,
+  data: BlockNodeData | undefined
+): BlockNodeData {
   const sanitized: BlockNodeData = {};
   if (typeof data?.label === 'string') {
-    sanitized.label = data.label.slice(0, 60);
+    sanitized.label = data.label.replace(/[<>]/g, '').trim().slice(0, 60);
   }
   if (type === 'timer') {
-    const rawDuration = typeof data?.durationSeconds === 'number' ? data.durationSeconds : 3;
-    sanitized.durationSeconds = Math.max(1, Math.min(3, Math.round(rawDuration)));
+    const rawDuration =
+      typeof data?.durationSeconds === 'number' ? data.durationSeconds : 3;
+    sanitized.durationSeconds = Math.max(1, Math.min(5, Math.round(rawDuration)));
+  }
+  if (type === 'filter') {
+    const rawStyle = data?.filterStyle;
+    sanitized.filterStyle =
+      rawStyle && ALLOWED_FILTER_STYLES.has(rawStyle) ? rawStyle : 'miyabi';
+  }
+  if (type === 'counter') {
+    const rawCount = typeof data?.targetCount === 'number' ? data.targetCount : 3;
+    sanitized.targetCount = Math.max(2, Math.min(5, Math.round(rawCount)));
   }
   return sanitized;
 }
@@ -260,7 +328,7 @@ export function addNode(graph: GraphState, node: BlockNode): GraphState {
     return graph;
   }
   const safeNode: BlockNode = {
-    id: String(node.id),
+    id: String(node.id).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 32) || `node-${graph.nodes.length + 1}`,
     type: node.type,
     position: {
       x: Number.isFinite(node.position.x) ? node.position.x : 80,
@@ -271,6 +339,25 @@ export function addNode(graph: GraphState, node: BlockNode): GraphState {
   return {
     ...graph,
     nodes: [...graph.nodes, safeNode],
+  };
+}
+
+export function updateNodeData(
+  graph: GraphState,
+  nodeId: string,
+  partialData: Partial<BlockNodeData>
+): GraphState {
+  const target = graph.nodes.find((n) => n.id === nodeId);
+  if (!target) {
+    return graph;
+  }
+  const merged = sanitizeNodeData(target.type, {
+    ...target.data,
+    ...partialData,
+  });
+  return {
+    ...graph,
+    nodes: graph.nodes.map((n) => (n.id === nodeId ? { ...n, data: merged } : n)),
   };
 }
 
@@ -296,8 +383,12 @@ export function moveNode(
   if (!target) {
     return graph;
   }
-  const nextX = Number.isFinite(position.x) ? Math.max(0, Math.round(position.x)) : target.position.x;
-  const nextY = Number.isFinite(position.y) ? Math.max(0, Math.round(position.y)) : target.position.y;
+  const nextX = Number.isFinite(position.x)
+    ? Math.max(0, Math.round(position.x))
+    : target.position.x;
+  const nextY = Number.isFinite(position.y)
+    ? Math.max(0, Math.round(position.y))
+    : target.position.y;
   if (target.position.x === nextX && target.position.y === nextY) {
     return graph;
   }
@@ -309,10 +400,34 @@ export function moveNode(
   };
 }
 
+/**
+ * Pure Kotodama (word spirit) text transformer for Filter blocks.
+ * Deterministic, safe, zero eval/API calls.
+ */
+export function transformKotodama(
+  inputText: string,
+  style: FilterStyle = 'miyabi'
+): string {
+  const base = (inputText || 'Hello!').trim().slice(0, 40);
+  switch (style) {
+    case 'bushido':
+      return `⚔️ いざ参らん！「${base}」でござる🔥`;
+    case 'miyabi':
+      return `🌸 花鳥風月〜 ${base} かな ✨`;
+    case 'kansai':
+      return `🎉 めっちゃ「${base}」やん！知らんけど🏮`;
+    default:
+      return base;
+  }
+}
+
 export function sanitizeGraph(raw: unknown): GraphState {
-  const obj = typeof raw === 'object' && raw !== null ? (raw as Record<string, unknown>) : {};
-  const schemaVersion = typeof obj.schemaVersion === 'number' ? obj.schemaVersion : 1;
-  const name = typeof obj.name === 'string' ? obj.name.slice(0, 80) : 'App LEGO Graph';
+  const obj =
+    typeof raw === 'object' && raw !== null ? (raw as Record<string, unknown>) : {};
+  const schemaVersion =
+    typeof obj.schemaVersion === 'number' ? obj.schemaVersion : 1;
+  const name =
+    typeof obj.name === 'string' ? obj.name.slice(0, 80) : 'App LEGO Graph';
 
   let state: GraphState = {
     schemaVersion,

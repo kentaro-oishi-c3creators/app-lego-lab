@@ -7,7 +7,7 @@
       "type": "message",
       "position": {
         "x": 80,
-        "y": 90
+        "y": 45
       },
       "data": {
         "label": "Hello!"
@@ -18,7 +18,7 @@
       "type": "character",
       "position": {
         "x": 410,
-        "y": 90
+        "y": 45
       },
       "data": {
         "label": "Happy bot"
@@ -29,7 +29,7 @@
       "type": "timer",
       "position": {
         "x": 80,
-        "y": 310
+        "y": 315
       },
       "data": {
         "label": "3 second timer",
@@ -41,7 +41,7 @@
       "type": "media-card",
       "position": {
         "x": 410,
-        "y": 310
+        "y": 315
       },
       "data": {
         "label": "Rainbow preview"

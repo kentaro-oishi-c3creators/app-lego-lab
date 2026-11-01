@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Canvas } from '../components/Canvas';
 import { CharacterRuntimeState } from '../components/blocks/CharacterBlock';
+import { CounterRuntimeState } from '../components/blocks/CounterBlock';
+import { FilterRuntimeState } from '../components/blocks/FilterBlock';
 import { MediaCardRuntimeState } from '../components/blocks/MediaCardBlock';
 import {
   addEdge,
@@ -8,13 +10,23 @@ import {
   moveNode,
   removeEdge,
   removeNode,
+  transformKotodama,
+  updateNodeData,
 } from '../domain/graph';
 import { dispatchEvent } from '../domain/runtime';
-import { createEmptyGraph, createSampleGraph } from '../domain/sampleGraph';
+import {
+  createEmptyGraph,
+  createSampleGraph,
+  decodeGraphFromHash,
+  encodeGraphToHash,
+  PRESET_RECIPES,
+} from '../domain/sampleGraph';
 import {
   BlockNode,
   BlockType,
   EdgeEndpoint,
+  EventPayload,
+  FilterStyle,
   Position,
 } from '../domain/types';
 import {
@@ -38,12 +50,22 @@ const DEFAULT_LABELS: Record<BlockType, string> = {
   character: 'Happy bot',
   timer: '3 second timer',
   'media-card': 'Rainbow preview',
+  filter: '雅（みやび）言霊',
+  counter: '三連大太鼓',
 };
 
+const MAX_CHAIN_STEPS = 8;
+
 export const App: React.FC = () => {
-  const [history, setHistory] = useState<HistoryState>(() =>
-    createHistory(createSampleGraph())
-  );
+  const [history, setHistory] = useState<HistoryState>(() => {
+    if (typeof window !== 'undefined' && window.location.hash.startsWith('#emaki=')) {
+      const decoded = decodeGraphFromHash(window.location.hash);
+      if (decoded) {
+        return createHistory(decoded);
+      }
+    }
+    return createHistory(createSampleGraph());
+  });
   const historyRef = useRef<HistoryState>(history);
   historyRef.current = history;
 
@@ -52,21 +74,41 @@ export const App: React.FC = () => {
     setHistory(nextHistory);
   }, []);
 
+  const [activePresetId, setActivePresetId] = useState<string>('poc0-basic');
   const [characterState, setCharacterState] = useState<
     Record<string, CharacterRuntimeState>
   >({});
   const [mediaState, setMediaState] = useState<
     Record<string, MediaCardRuntimeState>
   >({});
+  const [filterState, setFilterState] = useState<
+    Record<string, FilterRuntimeState>
+  >({});
+  const counterStateRef = useRef<Record<string, CounterRuntimeState>>({});
+  const [counterState, setCounterState] = useState<
+    Record<string, CounterRuntimeState>
+  >({});
+  const [timerSignals, setTimerSignals] = useState<Record<string, number>>({});
   const [activeEdgeIds, setActiveEdgeIds] = useState<ReadonlySet<string>>(
     () => new Set()
   );
   const [warningBanner, setWarningBanner] = useState<string | null>(null);
+  const [shareToast, setShareToast] = useState<string | null>(null);
+
+  // Karakuri Craft Studio ("からくり工房") state
+  const [isStudioOpen, setIsStudioOpen] = useState<boolean>(false);
+  const [craftType, setCraftType] = useState<BlockType>('character');
+  const [craftLabel, setCraftLabel] = useState<string>('千本桜からくり');
+  const [craftFilterStyle, setCraftFilterStyle] = useState<FilterStyle>('miyabi');
+  const [craftTargetCount, setCraftTargetCount] = useState<number>(3);
+  const [craftDuration, setCraftDuration] = useState<number>(2);
+  const [lastCraftReceipt, setLastCraftReceipt] = useState<string | null>(null);
+
   const [eventLog, setEventLog] = useState<EventLogEntry[]>([
     {
       id: 'init-1',
       timestamp: 'Ready',
-      summary: 'サンプルグラフを読み込みました (Message → Character, Timer → Media Card)',
+      summary: '絵巻を読み込みました (Message → Character, Timer → Media Card)',
       kind: 'system',
     },
   ]);
@@ -74,12 +116,15 @@ export const App: React.FC = () => {
   const nodeCounterRef = useRef<number>(2);
   const logCounterRef = useRef<number>(1);
   const jumpTimeoutsRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const chainTimeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const edgeHighlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const jumpTimeouts = jumpTimeoutsRef.current;
+    const chainTimeouts = chainTimeoutsRef.current;
     return () => {
       Object.values(jumpTimeouts).forEach(clearTimeout);
+      chainTimeouts.forEach(clearTimeout);
       if (edgeHighlightTimeoutRef.current) {
         clearTimeout(edgeHighlightTimeoutRef.current);
       }
@@ -105,13 +150,47 @@ export const App: React.FC = () => {
     []
   );
 
+  const resetRuntimeTransientState = useCallback(() => {
+    setCharacterState({});
+    setMediaState({});
+    setFilterState({});
+    counterStateRef.current = {};
+    setCounterState({});
+    setTimerSignals({});
+    setActiveEdgeIds(new Set());
+  }, []);
+
   const triggerRuntimePort = useCallback(
-    (sourceNodeId: string, sourcePortId: string) => {
+    (
+      sourceNodeId: string,
+      sourcePortId: string,
+      incomingPayload?: EventPayload,
+      chainDepth: number = 1
+    ) => {
+      if (chainDepth > MAX_CHAIN_STEPS) {
+        appendLog(
+          `安全上限 (MAX_CHAIN_STEPS=${MAX_CHAIN_STEPS}) により連鎖を停止しました`,
+          'warning'
+        );
+        return;
+      }
+
       setWarningBanner(null);
       const currentGraph = historyRef.current.present;
+      const sourceNode = currentGraph.nodes.find((n) => n.id === sourceNodeId);
+      const effectivePayload: EventPayload = incomingPayload ?? {
+        text: sourceNode?.data.label || 'Hello!',
+        style: 'normal',
+      };
+
       const result = dispatchEvent(currentGraph, sourceNodeId, sourcePortId);
 
-      if (result.unhandled) {
+      // Only process direct 1-hop deliveries from the firing port so multi-stage
+      // blocks (Filter, Counter, Character.landed, Timer.start) control their own
+      // transformation, counting, and timing deterministically.
+      const directDeliveries = result.deliveries.filter((d) => d.hop === 1);
+
+      if (directDeliveries.length === 0) {
         appendLog(
           `${sourceNodeId}.${sourcePortId} -> (未接続のため反応なし / unhandled)`,
           'unhandled'
@@ -121,23 +200,27 @@ export const App: React.FC = () => {
 
       const deliveredEdges = new Set<string>();
 
-      for (const delivery of result.deliveries) {
+      for (const delivery of directDeliveries) {
         deliveredEdges.add(delivery.edgeId);
         appendLog(
           `${delivery.sourceNodeId}.${delivery.sourcePortId} -> ${delivery.targetNodeId}.${delivery.targetPortId}`,
           'dispatch'
         );
 
+        const targetId = delivery.targetNodeId;
+        const targetNode = currentGraph.nodes.find((n) => n.id === targetId);
+
         if (
           delivery.targetBlockType === 'character' &&
           delivery.targetPortId === 'jump'
         ) {
-          const targetId = delivery.targetNodeId;
+          const speechText = effectivePayload.text;
           setCharacterState((prev) => ({
             ...prev,
             [targetId]: {
               isJumping: true,
               jumpCount: (prev[targetId]?.jumpCount ?? 0) + 1,
+              lastSpeechText: speechText,
             },
           }));
 
@@ -150,14 +233,22 @@ export const App: React.FC = () => {
               [targetId]: {
                 isJumping: false,
                 jumpCount: prev[targetId]?.jumpCount ?? 1,
+                lastSpeechText: prev[targetId]?.lastSpeechText,
               },
             }));
           }, 600);
+
+          // If Character.landed has outgoing connections, fire landed trigger!
+          const hasLandedEdges = currentGraph.edges.some(
+            (e) => e.from.nodeId === targetId && e.from.portId === 'landed'
+          );
+          if (hasLandedEdges) {
+            triggerRuntimePort(targetId, 'landed', effectivePayload, chainDepth + 1);
+          }
         } else if (
           delivery.targetBlockType === 'media-card' &&
           delivery.targetPortId === 'play'
         ) {
-          const targetId = delivery.targetNodeId;
           setMediaState((prev) => {
             const currentPlaying = prev[targetId]?.isPlaying ?? false;
             const currentCount = prev[targetId]?.toggleCount ?? 0;
@@ -169,10 +260,103 @@ export const App: React.FC = () => {
               },
             };
           });
+        } else if (
+          delivery.targetBlockType === 'filter' &&
+          delivery.targetPortId === 'in'
+        ) {
+          const style: FilterStyle = targetNode?.data.filterStyle ?? 'miyabi';
+          const transformedText = transformKotodama(
+            effectivePayload.text || 'Hello!',
+            style
+          );
+          setFilterState((prev) => ({
+            ...prev,
+            [targetId]: {
+              isPulsing: true,
+              lastOutputText: transformedText,
+              passCount: (prev[targetId]?.passCount ?? 0) + 1,
+            },
+          }));
+
+          const hasOutEdges = currentGraph.edges.some(
+            (e) => e.from.nodeId === targetId && e.from.portId === 'out'
+          );
+          if (hasOutEdges) {
+            triggerRuntimePort(
+              targetId,
+              'out',
+              { text: transformedText, style },
+              chainDepth + 1
+            );
+          }
+        } else if (
+          delivery.targetBlockType === 'counter' &&
+          delivery.targetPortId === 'hit'
+        ) {
+          const targetThreshold = Math.max(
+            2,
+            Math.min(5, targetNode?.data.targetCount ?? 3)
+          );
+          const prevCounter = counterStateRef.current[targetId] ?? {
+            currentCount: 0,
+            comboCount: 0,
+            isTriggered: false,
+          };
+          const nextHit = prevCounter.currentCount + 1;
+          if (nextHit >= targetThreshold) {
+            const nextState: CounterRuntimeState = {
+              currentCount: 0,
+              comboCount: prevCounter.comboCount + 1,
+              isTriggered: true,
+            };
+            counterStateRef.current = {
+              ...counterStateRef.current,
+              [targetId]: nextState,
+            };
+            setCounterState({ ...counterStateRef.current });
+
+            const hasComboEdges = currentGraph.edges.some(
+              (e) => e.from.nodeId === targetId && e.from.portId === 'combo'
+            );
+            if (hasComboEdges) {
+              triggerRuntimePort(
+                targetId,
+                'combo',
+                {
+                  text: `🎇 満願奥義・${effectivePayload.text || 'ドドン！'}`,
+                  style: effectivePayload.style,
+                },
+                chainDepth + 1
+              );
+            }
+          } else {
+            const nextState: CounterRuntimeState = {
+              currentCount: nextHit,
+              comboCount: prevCounter.comboCount,
+              isTriggered: false,
+            };
+            counterStateRef.current = {
+              ...counterStateRef.current,
+              [targetId]: nextState,
+            };
+            setCounterState({ ...counterStateRef.current });
+          }
+        } else if (
+          delivery.targetBlockType === 'timer' &&
+          delivery.targetPortId === 'start'
+        ) {
+          setTimerSignals((prev) => ({
+            ...prev,
+            [targetId]: (prev[targetId] ?? 0) + 1,
+          }));
         }
       }
 
-      setActiveEdgeIds(deliveredEdges);
+      setActiveEdgeIds((prev) => {
+        const merged = new Set(prev);
+        deliveredEdges.forEach((id) => merged.add(id));
+        return merged;
+      });
       if (edgeHighlightTimeoutRef.current) {
         clearTimeout(edgeHighlightTimeoutRef.current);
       }
@@ -185,16 +369,35 @@ export const App: React.FC = () => {
 
   const handleSendMessage = useCallback(
     (nodeId: string) => {
-      triggerRuntimePort(nodeId, 'sent');
+      const node = historyRef.current.present.nodes.find((n) => n.id === nodeId);
+      triggerRuntimePort(nodeId, 'sent', {
+        text: node?.data.label || 'Hello!',
+        style: 'normal',
+      });
     },
     [triggerRuntimePort]
   );
 
   const handleTimerElapsed = useCallback(
     (nodeId: string) => {
-      triggerRuntimePort(nodeId, 'elapsed');
+      triggerRuntimePort(nodeId, 'elapsed', {
+        text: '⏳ 刻満了！',
+        style: 'normal',
+      });
     },
     [triggerRuntimePort]
+  );
+
+  const handleChangeFilterStyle = useCallback(
+    (nodeId: string, style: FilterStyle) => {
+      const currentGraph = historyRef.current.present;
+      const nextGraph = updateNodeData(currentGraph, nodeId, {
+        filterStyle: style,
+      });
+      commitHistory(pushHistory(historyRef.current, nextGraph));
+      appendLog(`言霊スタイル変更: ${nodeId} -> ${style}`, 'system');
+    },
+    [appendLog, commitHistory]
   );
 
   const handleConnect = useCallback(
@@ -220,7 +423,7 @@ export const App: React.FC = () => {
       commitHistory(pushHistory(historyRef.current, nextGraph));
       if (addedEdge) {
         appendLog(
-          `接続追加: ${addedEdge.from.nodeId}.${addedEdge.from.portId} -> ${addedEdge.to.nodeId}.${addedEdge.to.portId}`,
+          `水引接続: ${addedEdge.from.nodeId}.${addedEdge.from.portId} -> ${addedEdge.to.nodeId}.${addedEdge.to.portId}`,
           'system'
         );
       }
@@ -247,7 +450,7 @@ export const App: React.FC = () => {
   );
 
   const handleAddBlock = useCallback(
-    (type: BlockType) => {
+    (type: BlockType, customData?: BlockNode['data']) => {
       setWarningBanner(null);
       const currentGraph = historyRef.current.present;
       const prefix =
@@ -257,7 +460,11 @@ export const App: React.FC = () => {
             ? 'char'
             : type === 'timer'
               ? 'timer'
-              : 'media';
+              : type === 'media-card'
+                ? 'media'
+                : type === 'filter'
+                  ? 'filter'
+                  : 'counter';
 
       let idx = nodeCounterRef.current;
       while (currentGraph.nodes.some((n) => n.id === `${prefix}-${idx}`)) {
@@ -265,27 +472,84 @@ export const App: React.FC = () => {
       }
       nodeCounterRef.current = idx + 1;
 
-      const offset = (currentGraph.nodes.length % 4) * 36;
+      const offset = (currentGraph.nodes.length % 5) * 32;
       const isSource = type === 'message' || type === 'timer';
+      const isMiddle = type === 'filter' || type === 'counter';
       const newNode: BlockNode = {
         id: `${prefix}-${idx}`,
         type,
         position: {
-          x: isSource ? 90 + offset : 420 + offset,
-          y: 100 + offset,
+          x: isSource ? 70 + offset : isMiddle ? 340 + offset : 610 + offset,
+          y: 90 + offset,
         },
         data: {
-          label: DEFAULT_LABELS[type],
-          ...(type === 'timer' ? { durationSeconds: 3 } : {}),
+          label: customData?.label || DEFAULT_LABELS[type],
+          ...(type === 'timer'
+            ? { durationSeconds: customData?.durationSeconds ?? 3 }
+            : {}),
+          ...(type === 'filter'
+            ? { filterStyle: customData?.filterStyle ?? 'miyabi' }
+            : {}),
+          ...(type === 'counter'
+            ? { targetCount: customData?.targetCount ?? 3 }
+            : {}),
         },
       };
 
       const nextGraph = addNode(currentGraph, newNode);
       commitHistory(pushHistory(historyRef.current, nextGraph));
-      appendLog(`ブロック追加: ${newNode.id} (${type})`, 'system');
+      appendLog(`ブロック召喚: ${newNode.id} (${newNode.data.label})`, 'system');
+      return newNode;
     },
     [appendLog, commitHistory]
   );
+
+  const handleCraftSummon = useCallback(
+    (e: React.FormEvent) => {
+      e.preventDefault();
+      const safeLabel = craftLabel.replace(/[<>]/g, '').trim().slice(0, 40) || DEFAULT_LABELS[craftType];
+      const summoned = handleAddBlock(craftType, {
+        label: safeLabel,
+        filterStyle: craftFilterStyle,
+        targetCount: craftTargetCount,
+        durationSeconds: craftDuration,
+      });
+      setLastCraftReceipt(
+        `💮 JIDOKA 検査 PASS [G02:型安全 / G06:eval禁止・無害化] → 「${summoned.data.label}」(${summoned.id}) を絵巻へ召喚しました！`
+      );
+    },
+    [craftDuration, craftFilterStyle, craftLabel, craftTargetCount, craftType, handleAddBlock]
+  );
+
+  const handleSelectPreset = useCallback(
+    (presetId: string) => {
+      const preset = PRESET_RECIPES.find((p) => p.id === presetId);
+      if (!preset) {
+        return;
+      }
+      setWarningBanner(null);
+      setShareToast(null);
+      setActivePresetId(presetId);
+      resetRuntimeTransientState();
+      const nextGraph = preset.create();
+      commitHistory(pushHistory(historyRef.current, nextGraph));
+      appendLog(`絵巻切替: ${preset.titleJa}`, 'system');
+    },
+    [appendLog, commitHistory, resetRuntimeTransientState]
+  );
+
+  const handleShareUrl = useCallback(() => {
+    const hash = encodeGraphToHash(historyRef.current.present);
+    if (typeof window !== 'undefined') {
+      window.history.replaceState(null, '', hash);
+      const fullUrl = `${window.location.origin}${window.location.pathname}${hash}`;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(fullUrl).catch(() => {});
+      }
+    }
+    setShareToast(`🔗 絵巻URLを生成しました (${hash.slice(0, 28)}...)`);
+    appendLog('絵巻URLをハッシュに保存・共有準備しました', 'system');
+  }, [appendLog]);
 
   const handleRemoveNode = useCallback(
     (nodeId: string) => {
@@ -315,36 +579,62 @@ export const App: React.FC = () => {
     }
     setWarningBanner(null);
     commitHistory(undoHistory(historyRef.current));
-    appendLog('Undo: 直前のグラフ状態を復元しました', 'system');
+    appendLog('Undo: 直前の絵巻状態を復元しました', 'system');
   }, [appendLog, commitHistory]);
 
   const handleResetDemo = useCallback(() => {
     setWarningBanner(null);
-    setCharacterState({});
-    setMediaState({});
-    setActiveEdgeIds(new Set());
+    setShareToast(null);
+    setActivePresetId('poc0-basic');
+    resetRuntimeTransientState();
     commitHistory(resetHistory(createSampleGraph()));
-    appendLog('Reset Demo: 初期サンプルグラフにリセットしました', 'system');
-  }, [appendLog, commitHistory]);
+    appendLog('Reset Demo: 壱ノ巻（初期サンプル）にリセットしました', 'system');
+  }, [appendLog, commitHistory, resetRuntimeTransientState]);
 
   const handleEmptyCanvas = useCallback(() => {
     setWarningBanner(null);
+    setShareToast(null);
+    resetRuntimeTransientState();
     const empty = createEmptyGraph();
     commitHistory(pushHistory(historyRef.current, empty));
-    appendLog('Empty Canvas: キャンバスを空にしました', 'system');
-  }, [appendLog, commitHistory]);
+    appendLog('Empty Canvas: 白紙の絵巻にしました', 'system');
+  }, [appendLog, commitHistory, resetRuntimeTransientState]);
 
   return (
     <div className="app-shell">
       <header className="top-bar">
         <div className="brand-title">
-          <h1>🧱 App LEGO Lab — PoC 0</h1>
-          <p className="subtitle">
-            ブロックを配置してつなぐと動きが変わる、ローカル完結・型安全イベントパズル
-          </p>
+          <div className="hanko-seal" aria-hidden="true" title="からくり自働化・匠の印">
+            巧
+          </div>
+          <div>
+            <h1>App LEGO からくり絵巻 — 和モダン工房</h1>
+            <p className="subtitle">
+              水引で言霊とからくりを結び、連鎖と舞を紡ぐローカル完結・型安全イベントパズル
+            </p>
+          </div>
         </div>
 
-        <div className="toolbar-actions" role="toolbar" aria-label="グラフ操作ツールバー">
+        <div className="toolbar-actions" role="toolbar" aria-label="絵巻操作ツールバー">
+          <button
+            type="button"
+            className="toolbar-btn studio-toggle-btn"
+            data-testid="toggle-studio-btn"
+            onClick={() => setIsStudioOpen((v) => !v)}
+            aria-expanded={isStudioOpen}
+            aria-label="からくり工房（カスタムブロック生成）を開く"
+          >
+            🧪 からくり工房 {isStudioOpen ? '▲' : '▼'}
+          </button>
+          <button
+            type="button"
+            className="toolbar-btn share-btn"
+            data-testid="share-url-btn"
+            onClick={handleShareUrl}
+            aria-label="現在の絵巻をURLハッシュとして共有 (Share URL)"
+          >
+            🔗 絵巻URL共有
+          </button>
           <button
             type="button"
             className="toolbar-btn undo-btn"
@@ -353,16 +643,16 @@ export const App: React.FC = () => {
             onClick={handleUndo}
             aria-label="元に戻す (Undo)"
           >
-            ↩️ Undo (元に戻す) [{history.past.length}]
+            ↩️ Undo (戻す) [{history.past.length}]
           </button>
           <button
             type="button"
             className="toolbar-btn empty-btn"
             data-testid="empty-canvas-btn"
             onClick={handleEmptyCanvas}
-            aria-label="空のキャンバスにする (Empty Canvas)"
+            aria-label="白紙の絵巻にする (Empty Canvas)"
           >
-            🧹 Empty Canvas (空にする)
+            🧹 Empty (白紙)
           </button>
           <button
             type="button"
@@ -371,10 +661,154 @@ export const App: React.FC = () => {
             onClick={handleResetDemo}
             aria-label="デモを初期状態にリセット (Reset Demo)"
           >
-            🔄 Reset Demo (初期状態へ)
+            🔄 Reset (初期化)
           </button>
         </div>
       </header>
+
+      <nav className="preset-scroll-bar" aria-label="からくり絵巻プリセット選択">
+        <span className="preset-bar-label">📜 絵巻プリセット:</span>
+        <div className="preset-buttons-row">
+          {PRESET_RECIPES.map((preset) => (
+            <button
+              key={preset.id}
+              type="button"
+              className={`preset-scroll-btn ${
+                activePresetId === preset.id ? 'active' : ''
+              }`}
+              data-testid={`preset-btn-${preset.id}`}
+              onClick={() => handleSelectPreset(preset.id)}
+              title={preset.subtitleJa}
+            >
+              <strong>{preset.titleJa}</strong>
+              <small>{preset.subtitleJa}</small>
+            </button>
+          ))}
+        </div>
+      </nav>
+
+      {isStudioOpen && (
+        <section
+          className="karakuri-studio-drawer"
+          aria-label="からくり工房（JIDOKA安全検査付きブロック召喚）"
+          data-testid="karakuri-studio-drawer"
+        >
+          <form className="studio-form" onSubmit={handleCraftSummon}>
+            <div className="studio-header">
+              <strong>🧪 からくり工房 (JIDOKA 認定カスタムブロック召喚)</strong>
+              <span>
+                外部AI通信ゼロ・ローカル型検査と無害化フィルタを通過した安全なブロックだけを召喚します。
+              </span>
+            </div>
+            <div className="studio-controls">
+              <label className="studio-field">
+                <span>型 (Type):</span>
+                <select
+                  data-testid="craft-type-select"
+                  value={craftType}
+                  onChange={(e) => setCraftType(e.target.value as BlockType)}
+                >
+                  <option value="message">📜 文 (Message)</option>
+                  <option value="filter">⛩️ 言霊フィルター (Filter)</option>
+                  <option value="counter">🥁 太鼓カウンター (Counter)</option>
+                  <option value="character">🎎 からくり人形 (Character)</option>
+                  <option value="timer">🕰️ 刻・砂時計 (Timer)</option>
+                  <option value="media-card">🏮 絵巻・舞台 (Media Card)</option>
+                </select>
+              </label>
+
+              <label className="studio-field">
+                <span>銘・セリフ (Label):</span>
+                <input
+                  type="text"
+                  data-testid="craft-label-input"
+                  value={craftLabel}
+                  maxLength={40}
+                  onChange={(e) => setCraftLabel(e.target.value)}
+                  placeholder="例: 千本桜からくり"
+                />
+              </label>
+
+              {craftType === 'filter' && (
+                <label className="studio-field">
+                  <span>言霊調 (Style):</span>
+                  <select
+                    data-testid="craft-style-select"
+                    value={craftFilterStyle}
+                    onChange={(e) =>
+                      setCraftFilterStyle(e.target.value as FilterStyle)
+                    }
+                  >
+                    <option value="miyabi">🌸 雅（和歌調）</option>
+                    <option value="bushido">⚔️ 武士（熱血）</option>
+                    <option value="kansai">🎉 祭（関西ノリ）</option>
+                  </select>
+                </label>
+              )}
+
+              {craftType === 'counter' && (
+                <label className="studio-field">
+                  <span>必要太鼓数:</span>
+                  <input
+                    type="number"
+                    min={2}
+                    max={5}
+                    value={craftTargetCount}
+                    onChange={(e) => setCraftTargetCount(Number(e.target.value))}
+                  />
+                </label>
+              )}
+
+              {craftType === 'timer' && (
+                <label className="studio-field">
+                  <span>秒数 (1-5s):</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={5}
+                    value={craftDuration}
+                    onChange={(e) => setCraftDuration(Number(e.target.value))}
+                  />
+                </label>
+              )}
+
+              <button
+                type="submit"
+                className="studio-summon-btn"
+                data-testid="craft-summon-btn"
+              >
+                💮 JIDOKA 検査して召喚
+              </button>
+            </div>
+            {lastCraftReceipt && (
+              <div
+                className="studio-receipt"
+                role="status"
+                data-testid="craft-receipt"
+              >
+                {lastCraftReceipt}
+              </div>
+            )}
+          </form>
+        </section>
+      )}
+
+      {shareToast && (
+        <div
+          className="share-toast-banner"
+          role="status"
+          data-testid="share-toast-banner"
+        >
+          <span>{shareToast}</span>
+          <button
+            type="button"
+            className="warning-dismiss-btn"
+            onClick={() => setShareToast(null)}
+          >
+            閉じる
+          </button>
+        </div>
+      )}
 
       {warningBanner && (
         <div
@@ -397,10 +831,10 @@ export const App: React.FC = () => {
       )}
 
       <main className="workspace-grid">
-        <aside className="toybox-panel" aria-label="トイボックス (Block Palette)">
-          <h2 className="panel-heading">🧰 Toybox (ブロック追加)</h2>
+        <aside className="toybox-panel" aria-label="からくり道具箱 (Block Palette)">
+          <h2 className="panel-heading">🧰 からくり道具箱 (Toybox)</h2>
           <p className="panel-help">
-            クリックしてキャンバスに追加。出力ポートから入力ポートへつないで動かしましょう。
+            クリックで絵巻へ配置。右側の出力ポートから左側の入力ポートへ水引を結んで連鎖させましょう。
           </p>
           <div className="palette-list">
             <button
@@ -409,9 +843,9 @@ export const App: React.FC = () => {
               data-testid="add-message-btn"
               onClick={() => handleAddBlock('message')}
             >
-              <span className="palette-icon" aria-hidden="true">💬</span>
+              <span className="palette-icon" aria-hidden="true">📜</span>
               <span className="palette-text">
-                <strong>+ Message (メッセージ)</strong>
+                <strong>+ Message (文・言霊)</strong>
                 <small>出力: sent (trigger)</small>
               </span>
             </button>
@@ -422,10 +856,10 @@ export const App: React.FC = () => {
               data-testid="add-character-btn"
               onClick={() => handleAddBlock('character')}
             >
-              <span className="palette-icon" aria-hidden="true">🤖</span>
+              <span className="palette-icon" aria-hidden="true">🎎</span>
               <span className="palette-text">
-                <strong>+ Character (キャラクター)</strong>
-                <small>入力: jump (trigger)</small>
+                <strong>+ Character (からくり人形)</strong>
+                <small>入: jump / 出: landed (着地連鎖)</small>
               </span>
             </button>
 
@@ -435,10 +869,10 @@ export const App: React.FC = () => {
               data-testid="add-timer-btn"
               onClick={() => handleAddBlock('timer')}
             >
-              <span className="palette-icon" aria-hidden="true">⏱️</span>
+              <span className="palette-icon" aria-hidden="true">🕰️</span>
               <span className="palette-text">
-                <strong>+ Timer (3秒タイマー)</strong>
-                <small>出力: elapsed (trigger)</small>
+                <strong>+ Timer (砂時計・3秒)</strong>
+                <small>入: start / 出: elapsed</small>
               </span>
             </button>
 
@@ -448,16 +882,42 @@ export const App: React.FC = () => {
               data-testid="add-media-btn"
               onClick={() => handleAddBlock('media-card')}
             >
-              <span className="palette-icon" aria-hidden="true">🎬</span>
+              <span className="palette-icon" aria-hidden="true">🏮</span>
               <span className="palette-text">
-                <strong>+ Media Card (メディア)</strong>
-                <small>入力: play (trigger)</small>
+                <strong>+ Media Card (絵巻舞台)</strong>
+                <small>入力: play (演舞切替)</small>
+              </span>
+            </button>
+
+            <button
+              type="button"
+              className="palette-item palette-filter"
+              data-testid="add-filter-btn"
+              onClick={() => handleAddBlock('filter')}
+            >
+              <span className="palette-icon" aria-hidden="true">⛩️</span>
+              <span className="palette-text">
+                <strong>+ Filter (言霊変換)</strong>
+                <small>入: in → 出: out (雅/武士/祭)</small>
+              </span>
+            </button>
+
+            <button
+              type="button"
+              className="palette-item palette-counter"
+              data-testid="add-counter-btn"
+              onClick={() => handleAddBlock('counter')}
+            >
+              <span className="palette-icon" aria-hidden="true">🥁</span>
+              <span className="palette-text">
+                <strong>+ Counter (三連大太鼓)</strong>
+                <small>入: hit (3打) → 出: combo</small>
               </span>
             </button>
           </div>
 
-          <section className="event-log-section" aria-label="イベントログ (Event Log)">
-            <h2 className="panel-heading">📜 Event Log (動作ログ)</h2>
+          <section className="event-log-section" aria-label="からくり過去帳 (Event Log)">
+            <h2 className="panel-heading">📖 からくり過去帳 (Event Log)</h2>
             <ul className="event-log-list" data-testid="event-log-list">
               {eventLog.map((item) => (
                 <li
@@ -478,9 +938,13 @@ export const App: React.FC = () => {
           graph={history.present}
           characterState={characterState}
           mediaState={mediaState}
+          filterState={filterState}
+          counterState={counterState}
+          timerSignals={timerSignals}
           activeEdgeIds={activeEdgeIds}
           onSendMessage={handleSendMessage}
           onTimerElapsed={handleTimerElapsed}
+          onChangeFilterStyle={handleChangeFilterStyle}
           onConnect={handleConnect}
           onDisconnectEdge={handleDisconnectEdge}
           onRemoveNode={handleRemoveNode}
