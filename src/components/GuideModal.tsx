@@ -220,7 +220,7 @@ export const GuideModal: React.FC<GuideModalProps> = ({
             <div className="slide-deck-container" data-testid="slide-deck-view">
               <div className="slide-hero-visual">
                 <img
-                  src="/karakuri-concept-hero.jpg"
+                  src="./karakuri-concept-hero.jpg"
                   alt={
                     isJa
                       ? '和モダン・からくり絵巻のコンセプトイラスト（獅子舞からくり人形・文箱・砂時計・太鼓・鳥居フィルター・提灯舞台が水引と金色の言霊玉で結ばれている絵巻）'
